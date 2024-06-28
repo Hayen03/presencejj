@@ -7,7 +7,7 @@ use crate::{
     prelude::{O, R},
 };
 
-use super::{into_string, ExtractError};
+use super::{extract_groupe_info_from_name, into_string, ExtractError, GroupeInfoExtract};
 
 /**
  * Contient les positions des informations de groupe dans le fichier excel
@@ -36,6 +36,7 @@ impl Default for GroupeExtractConfig {
  */
 pub struct GroupeExtractData {
     pub nom: String, // nom du groupe;
+    pub desc: GroupeInfoExtract,
     pub saison: O<String>,
     pub sous_groupe: O<String>,
     pub responsable: O<String>,
@@ -51,6 +52,7 @@ impl GroupeExtractData {
         let sous_groupe = into_string(range.get_value(config.sous_groupe.0, config.sous_groupe.1));
         let responsable = into_string(range.get_value(config.responsable.0, config.responsable.1));
         let profil = into_string(range.get_value(config.profil.0, config.profil.1));
+        let desc = extract_groupe_info_from_name(&nom)?;
 
         Ok(Self {
             nom,
@@ -58,14 +60,15 @@ impl GroupeExtractData {
             sous_groupe,
             responsable,
             profil,
+            desc,
         })
     }
 }
 impl Display for GroupeExtractData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = match &self.saison {
-            None => self.nom.clone(),
-            Some(saison) => saison.clone() + " " + &self.nom,
+            None => self.desc.to_string(),
+            Some(saison) => saison.clone() + " " + &self.desc.to_string(),
         };
         if self.sous_groupe.is_some() || self.responsable.is_some() || self.profil.is_some() {
             let mut first = true;
