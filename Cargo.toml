@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 rfd = "0.14.1"
 office = "0.8"
+lazy_static = "1.5"
+regex = "1.10"
