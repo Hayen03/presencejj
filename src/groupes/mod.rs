@@ -1,0 +1,9 @@
+pub mod activites;
+pub mod comptes;
+pub mod fiche_sante;
+pub mod groupes;
+pub mod inscriptions;
+pub mod membres;
+pub mod periodes;
+pub mod saisons;
+pub mod sites;
