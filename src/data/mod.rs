@@ -4,6 +4,7 @@ use std::fmt::Display;
 pub mod adresse;
 pub mod cam;
 pub mod tel;
+pub mod email;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]

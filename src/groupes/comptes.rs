@@ -1,2 +1,92 @@
+use std::{collections::{hash_map::Values, HashMap, HashSet}, fmt::Display, iter::{Filter, Map}};
 
-pub struct Compte;
+use crate::data::adresse::Adresse;
+use crate::data::tel::Tel;
+use crate::prelude::*;
+use crate::data::email::Email;
+
+use super::{membres::{Membre, MembreID}, RegError};
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CompteID(u32);
+impl Display for CompteID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "C{}", self.0)
+    }
+}
+
+pub struct Compte {
+    id: CompteID,
+    mandataire: String,
+    email: O<Email>,
+    tel: O<Tel>,
+    adresse: O<Adresse>,
+    membres: HashSet<MembreID>,
+}
+
+pub struct CompteReg {
+    reg: HashMap<CompteID, Compte>,
+}
+impl CompteReg {
+    pub fn get_new_id(&self) -> CompteID {
+        let mut cid = CompteID(rand::random());
+        while self.reg.contains_key(&cid) {
+            cid = CompteID(cid.0+1)
+        }
+        cid
+    }
+    pub fn add(&mut self, compte: Compte) -> Result<(), RegError<CompteID>> {
+        if self.reg.contains_key(&compte.id) {Err(RegError::KeyAlreadyInReg(compte.id))}
+        else {
+            self.reg.insert(compte.id, compte);
+            Ok(())
+        }
+    }
+    pub fn remove(&mut self, cid: CompteID) -> Result<Compte, RegError<CompteID>> {
+        match self.reg.remove(&cid) {
+            Option::None => Err(RegError::NoSuchItem(cid)),
+            Option::Some(c) => Ok(c),
+        }
+    }
+    pub fn get(&self, cid: CompteID) -> Result<&Compte, RegError<CompteID>> {
+        match self.reg.get(&cid) {
+            Option::None => Err(RegError::NoSuchItem(cid)),
+            Option::Some(c) => Ok(c),
+        }
+    }
+    pub fn get_mut(&mut self, cid: CompteID) -> Result<&mut Compte, RegError<CompteID>> {
+        match self.reg.get_mut(&cid) {
+            Option::None => Err(RegError::NoSuchItem(cid)),
+            Option::Some(c) => Ok(c),
+        }
+    }
+    pub fn search_by_name<'a>(&'a self, nom: &'a str) -> CompteIter<'a, impl Iterator<Item=&'a Compte>> {
+        CompteIter(self.reg.values().filter(move |c| c.mandataire == nom))
+    }
+    pub fn comptes<'a>(&'a self) -> CompteIter<'a, impl Iterator<Item=&'a Compte>> {
+        CompteIter(self.reg.values())
+    }
+    pub fn comptes_mut<'a>(&'a mut self) -> CompteIterMut<'a, impl Iterator<Item=&'a mut Compte>> {
+        CompteIterMut(self.reg.values_mut())
+    }
+}
+
+pub struct CompteIter<'a, Src: Iterator<Item=&'a Compte>> (Src);
+impl<'a, Src: Iterator<Item=&'a Compte>> Iterator for CompteIter<'a, Src>  {
+    type Item = &'a Compte;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+    
+}
+pub struct CompteIterMut<'a, Src: Iterator<Item=&'a mut Compte>> (Src);
+impl<'a, Src: Iterator<Item=&'a mut Compte>> Iterator for CompteIterMut<'a, Src>  {
+    type Item = &'a mut Compte;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+    
+}

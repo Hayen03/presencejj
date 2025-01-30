@@ -7,3 +7,8 @@ pub mod membres;
 pub mod periodes;
 pub mod saisons;
 pub mod sites;
+
+pub enum RegError<Key> {
+    KeyAlreadyInReg(Key),
+    NoSuchItem(Key),
+}
