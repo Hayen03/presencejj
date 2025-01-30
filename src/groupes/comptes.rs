@@ -8,7 +8,7 @@ use crate::data::email::Email;
 use super::{membres::{Membre, MembreID}, RegError};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CompteID(u32);
 impl Display for CompteID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -16,6 +16,7 @@ impl Display for CompteID {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct Compte {
     id: CompteID,
     mandataire: String,
@@ -24,7 +25,40 @@ pub struct Compte {
     adresse: O<Adresse>,
     membres: HashSet<MembreID>,
 }
+impl Compte {
+    pub fn new(id: CompteID, mandataire: String) -> Self {
+        Compte { id, mandataire, ..Self::default() }
+    }
 
+    pub fn contains_membre(&self, mid: MembreID) -> bool {
+        self.membres.contains(&mid)
+    }
+    pub fn add_membre(&mut self, membre: &mut Membre) -> Result<(), CompteErr> {
+        if let Some(_) = membre.compte { Err(CompteErr::MembreDejaDansUnCompte(membre.id)) }
+        else if self.membres.insert(membre.id) {
+            membre.compte = Some(self.id);
+            Ok(())
+        }
+        else {Err(CompteErr::MembreDejaExistant(membre.id))}
+    }
+    pub fn remove_membre(&mut self, membre: &mut Membre) -> Result<(), CompteErr> {
+        if let None = membre.compte { Err(CompteErr::MembreSansCompte(membre.id)) }
+        else if self.membres.remove(&membre.id) {
+            membre.compte = None;
+            Ok(())
+        } else {Err(CompteErr::MembreInexistant(membre.id))}
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CompteErr {
+    MembreDejaExistant(MembreID),
+    MembreInexistant(MembreID),
+    MembreDejaDansUnCompte(MembreID),
+    MembreSansCompte(MembreID),
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct CompteReg {
     reg: HashMap<CompteID, Compte>,
 }
@@ -35,6 +69,9 @@ impl CompteReg {
             cid = CompteID(cid.0+1)
         }
         cid
+    }
+    pub fn contains(&self, cid: CompteID) -> bool {
+        self.reg.contains_key(&cid)
     }
     pub fn add(&mut self, compte: Compte) -> Result<(), RegError<CompteID>> {
         if self.reg.contains_key(&compte.id) {Err(RegError::KeyAlreadyInReg(compte.id))}

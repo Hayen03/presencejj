@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use super::{comptes::{Compte, CompteID}, fiche_sante::FicheSante, RegError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct MembreID(u32);
 impl Display for MembreID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -11,7 +11,7 @@ impl Display for MembreID {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Membre {
     pub id: MembreID,
     pub nom: String,
@@ -35,6 +35,23 @@ impl PartialEq for Membre {
     }
 }
 impl Eq for Membre {}
+impl Membre {
+    pub fn new(mid: MembreID, nom: String, prenom: String, naissance: Date) -> Self {
+        Self {
+            id: mid,
+            nom,
+            prenom,
+            naissance,
+            ..Self::default()
+        }
+    }
+    pub fn equiv(&self, other: &Self) -> bool {
+        self.nom == other.nom &&
+        self.prenom == other.prenom &&
+        self.naissance == other.naissance &&
+        self.compte == other.compte
+    }
+}
 
 
 pub type Interets = [O<Interet>; 4];
@@ -76,6 +93,7 @@ pub struct Piscine {
     tete_sous_eau: O<bool>,
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct MembreReg {
     reg: HashMap<MembreID, Membre>,
 }
@@ -86,6 +104,9 @@ impl MembreReg {
             mid = MembreID(mid.0+1)
         }
         mid
+    }
+    pub fn contains(&self, mid: MembreID) -> bool {
+        self.reg.contains_key(&mid)
     }
     pub fn add(&mut self, membre: Membre) -> Result<(), RegError<MembreID>> {
         if self.reg.contains_key(&membre.id) {Err(RegError::KeyAlreadyInReg(membre.id))}
