@@ -8,6 +8,7 @@ pub mod periodes;
 pub mod saisons;
 pub mod sites;
 
+#[derive(Debug)]
 pub enum RegError<Key> {
     KeyAlreadyInReg(Key),
     NoSuchItem(Key),

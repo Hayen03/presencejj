@@ -5,7 +5,6 @@ use std::{
 
 use crate::{prelude::*};
 
-
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -18,7 +17,7 @@ lazy_static! {
 	pub static ref ADRESSE_FULL_REGEX: Regex = Regex::new(r"^\s*(?:\w\s*:\s*)?(?P<num>\d+),?\s*(?P<rue>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈ\- .]+)(?:\s*#(?P<app>\d+))?\s+,?(?P<ville>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈ\- .]+),\s*(?P<province>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈ\- .]+)\s*,\s*(?P<pays>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈ\- .]+)\s*,\s*(?P<codepostal>[a-zA-Z0-9 ]+)$").unwrap();
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Adresse {
 	pub numero: O<i32>,
 	pub rue: O<String>,

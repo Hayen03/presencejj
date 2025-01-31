@@ -1,6 +1,6 @@
 use crate::{data::{cam::CAM, BoolJustifie}, prelude::*};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct FicheSante {
     allergies: Vec<String>,
     maladies: Vec<String>,
@@ -11,7 +11,7 @@ pub struct FicheSante {
     auth_medicaments: Medicaments,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Medicaments {
     pub sirop_toux: O<bool>,
     pub anti_emetique: O<bool>,

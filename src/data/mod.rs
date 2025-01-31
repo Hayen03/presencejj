@@ -17,7 +17,7 @@ lazy_static! {
 	pub static ref adr_re: Regex = Regex::new(r"(:?[\w-]+\s*:\s*)?(?P<num>\d+)\s*,?\s*(?:(?:(?P<rue>[\w\s-]+?)\s*(?P<ville>[\w-]+))|(?:(?P<ruewapp>[\w\s-]+?)\s*#(?:(?P<app>\d+)|(?P<falseapp>-))\s*,\s*(?P<villewapp>[\w-]+)))\s*,\s*(?P<province>[\w -]+?)\s*,\s*(?P<pays>[\w -]+?)\s*,\s*(?P<code>[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d)").unwrap();
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
 pub enum Genre {
     #[default]
     Homme,
@@ -34,7 +34,7 @@ impl Display for Genre {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Taille {
     XS,
     S,
@@ -56,7 +56,7 @@ impl Display for Taille {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct BoolJustifie {
     pub reponse: bool,
     pub justification: O<String>,

@@ -1,13 +1,13 @@
-use std::{collections::{HashMap, HashSet}, fmt::Display};
+use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use crate::prelude::*;
-use super::{membres::MembreID, RegError};
+use super::{membres::{Interet, MembreID}, RegError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct GroupeID(u32);
+pub struct GroupeID(pub u32);
 impl Display for GroupeID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "G{}", self.0)
+        write!(f, "G{:08x}", self.0)
     }
 }
 
@@ -20,7 +20,9 @@ pub struct Groupe {
     pub discriminant: O<String>,
     pub animateur: O<String>,
     pub semaine: O<String>,
+    pub activite: O<String>,
     pub participants: HashSet<MembreID>,
+    pub sous_groupe: Vec<SousGroupe>,
 }
 impl PartialEq for Groupe {
     fn eq(&self, other: &Self) -> bool {
@@ -56,17 +58,56 @@ impl Groupe {
         self.saison == other.saison && 
         self.category == other.category &&
         self.discriminant == other.discriminant &&
-        self.semaine == other.semaine
+        self.semaine == other.semaine &&
+        self.activite == other.activite
+    }
+    pub fn get_id_seed(&self) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        self.saison.hash(&mut hasher);
+        self.category.hash(&mut hasher);
+        self.discriminant.hash(&mut hasher);
+        self.semaine.hash(&mut hasher);
+        self.activite.hash(&mut hasher);
+        hasher.finish() as u32
+    }
+
+    pub fn mk_sous_groupes(&mut self) {
+        self.sous_groupe.clear();
+        let sg = SousGroupe {
+            participants: self.participants.clone(),
+            ..SousGroupe::default()
+        };
+        self.sous_groupe.push(sg);
+        // TODO: faire les vrais sous-groupes
+    }
+
+    pub fn desc(&self) -> String {
+        format!("{}: {} | {} | {} | Sem. {} - {} ({})", 
+            print_option(&self.saison),
+            print_option(&self.activite),
+            print_option(&self.site),
+            print_option(&self.category),
+            print_option(&self.semaine),
+            print_option(&self.discriminant),
+            print_option(&self.animateur),
+        )
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GroupeReg {
     reg: HashMap<GroupeID, Groupe>,
 }
 impl GroupeReg {
     pub fn get_new_id(&self) -> GroupeID {
         let mut gid = GroupeID(rand::random());
+        while self.reg.contains_key(&gid) {
+            gid = GroupeID(gid.0+1)
+        }
+        gid
+    }
+    pub fn get_new_id_from_seed(&self, seed: u32) -> GroupeID {
+        let mut gid = GroupeID(seed);
         while self.reg.contains_key(&gid) {
             gid = GroupeID(gid.0+1)
         }
@@ -100,10 +141,10 @@ impl GroupeReg {
             Option::Some(m) => Ok(m),
         }
     }
-    pub fn Groupes<'a>(&'a self) -> GroupeIter<'a, impl Iterator<Item=&'a Groupe>> {
+    pub fn groupes<'a>(&'a self) -> GroupeIter<'a, impl Iterator<Item=&'a Groupe>> {
         GroupeIter(self.reg.values())
     }
-    pub fn Groupes_mut<'a>(&'a mut self) -> GroupeIterMut<'a, impl Iterator<Item=&'a mut Groupe>> {
+    pub fn groupes_mut<'a>(&'a mut self) -> GroupeIterMut<'a, impl Iterator<Item=&'a mut Groupe>> {
         GroupeIterMut(self.reg.values_mut())
     }
 }
@@ -125,4 +166,12 @@ impl<'a, Src: Iterator<Item=&'a mut Groupe>> Iterator for GroupeIterMut<'a, Src>
         self.0.next()
     }
     
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SousGroupe {
+    pub profil: O<String>,
+    pub disc: u32,
+    pub participants: HashSet<MembreID>,
+    pub groupe: GroupeID,
 }

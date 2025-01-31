@@ -124,3 +124,12 @@ where
 		Some(t) => t.to_string(),
 	}
 }
+
+pub fn excel_col_to_num(col: &str) -> O<u32> {
+	let mut n = 0;
+	for c in col.trim().to_lowercase().chars() {
+		if !c.is_ascii_alphabetic() {return None;}
+		n = n*26 + ((c as u32) - 96);
+	}
+	Some(n)
+}

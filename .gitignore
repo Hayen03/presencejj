@@ -19,3 +19,7 @@ srsrc/*
 # Added by cargo
 
 /target
+
+
+# ignore les fichiers de données dans test
+tests/*

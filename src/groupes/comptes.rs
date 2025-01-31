@@ -1,4 +1,4 @@
-use std::{collections::{hash_map::Values, HashMap, HashSet}, fmt::Display, iter::{Filter, Map}};
+use std::{collections::{hash_map::Values, HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, iter::{Filter, Map}};
 
 use crate::data::adresse::Adresse;
 use crate::data::tel::Tel;
@@ -9,10 +9,10 @@ use super::{membres::{Membre, MembreID}, RegError};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct CompteID(u32);
+pub struct CompteID(pub u32);
 impl Display for CompteID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "C{}", self.0)
+        write!(f, "C{:08x}", self.0)
     }
 }
 
@@ -48,6 +48,20 @@ impl Compte {
             Ok(())
         } else {Err(CompteErr::MembreInexistant(membre.id))}
     }
+    pub fn equiv(&self, other: &Self) -> bool {
+        self.mandataire == other.mandataire &&
+        self.email == other.email &&
+        self.tel == other.tel &&
+        self.adresse == other.adresse
+    }
+    pub fn get_id_seed(&self) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        self.mandataire.hash(&mut hasher);
+        self.email.hash(&mut hasher);
+        self.tel.hash(&mut hasher);
+        self.adresse.hash(&mut hasher);
+        hasher.finish() as u32
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +79,13 @@ pub struct CompteReg {
 impl CompteReg {
     pub fn get_new_id(&self) -> CompteID {
         let mut cid = CompteID(rand::random());
+        while self.reg.contains_key(&cid) {
+            cid = CompteID(cid.0+1)
+        }
+        cid
+    }
+    pub fn get_new_id_from_seed(&self, seed: u32) -> CompteID {
+        let mut cid = CompteID(seed);
         while self.reg.contains_key(&cid) {
             cid = CompteID(cid.0+1)
         }

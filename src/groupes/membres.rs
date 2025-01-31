@@ -1,13 +1,13 @@
 use crate::{data::{tel::Tel, Genre, Taille}, prelude::*};
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use super::{comptes::{Compte, CompteID}, fiche_sante::FicheSante, RegError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct MembreID(u32);
+pub struct MembreID(pub u32);
 impl Display for MembreID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "M{}", self.0)
+        write!(f, "M{:08x}", self.0)
     }
 }
 
@@ -50,6 +50,13 @@ impl Membre {
         self.prenom == other.prenom &&
         self.naissance == other.naissance &&
         self.compte == other.compte
+    }
+    pub fn get_id_seed(&self) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        self.nom.hash(&mut hasher);
+        self.prenom.hash(&mut hasher);
+        self.naissance.hash(&mut hasher);
+        hasher.finish() as u32
     }
 }
 
@@ -100,6 +107,13 @@ pub struct MembreReg {
 impl MembreReg {
     pub fn get_new_id(&self) -> MembreID {
         let mut mid = MembreID(rand::random());
+        while self.reg.contains_key(&mid) {
+            mid = MembreID(mid.0+1)
+        }
+        mid
+    }
+    pub fn get_new_id_from_seed(&self, seed: u32) -> MembreID {
+        let mut mid = MembreID(seed);
         while self.reg.contains_key(&mid) {
             mid = MembreID(mid.0+1)
         }
