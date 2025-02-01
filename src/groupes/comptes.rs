@@ -18,12 +18,12 @@ impl Display for CompteID {
 
 #[derive(Debug, Clone, Default)]
 pub struct Compte {
-    id: CompteID,
-    mandataire: String,
-    email: O<Email>,
-    tel: O<Tel>,
-    adresse: O<Adresse>,
-    membres: HashSet<MembreID>,
+    pub id: CompteID,
+    pub mandataire: String,
+    pub email: O<Email>,
+    pub tel: O<Tel>,
+    pub adresse: O<Adresse>,
+    pub membres: HashSet<MembreID>,
 }
 impl Compte {
     pub fn new(id: CompteID, mandataire: String) -> Self {
@@ -34,8 +34,12 @@ impl Compte {
         self.membres.contains(&mid)
     }
     pub fn add_membre(&mut self, membre: &mut Membre) -> Result<(), CompteErr> {
-        if let Some(_) = membre.compte { Err(CompteErr::MembreDejaDansUnCompte(membre.id)) }
-        else if self.membres.insert(membre.id) {
+        if let Some(cid) = membre.compte {
+            if cid != self.id {
+                return Err(CompteErr::MembreDejaDansUnCompte(membre.id));
+            }
+        }
+        if self.membres.insert(membre.id) {
             membre.compte = Some(self.id);
             Ok(())
         }

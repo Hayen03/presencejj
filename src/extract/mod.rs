@@ -10,9 +10,10 @@ pub mod excel;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExtractError {
-    InvalidGroupFormat,
+    InvalidFormat,
     InvalidGroupNameFormat,
     CouldNotReadFile,
+    MissingInformations(&'static str),
 }
 impl Display for ExtractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -20,9 +21,10 @@ impl Display for ExtractError {
             f,
             "ExtractError: {}",
             match self {
-                ExtractError::InvalidGroupFormat => "Format de groupe invalide",
-                ExtractError::InvalidGroupNameFormat => "Nom de groupe invalide",
-                ExtractError::CouldNotReadFile => "N'a pu lire le fichier",
+                ExtractError::InvalidFormat => "Format de donnée invalide".into(),
+                ExtractError::InvalidGroupNameFormat => "Nom de groupe invalide".into(),
+                ExtractError::CouldNotReadFile => "N'a pu lire le fichier".into(),
+                ExtractError::MissingInformations(s) => format!("Information manquante ({})", s),
             }
         )
     }

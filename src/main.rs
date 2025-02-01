@@ -16,17 +16,28 @@ pub mod ui;
 pub struct Config {
     out_dir: String, 
     verbose: bool,
+    excel: ExcelConfig,
 }
 impl Default for Config {
     fn default() -> Self {
         Self {
             out_dir: "./out".into(),
             verbose: true,
+            excel: ExcelConfig::default(),
         }
     }
 }
 pub struct ExcelConfig {
-    
+    ln_skip: usize,
+    data_ln: usize,
+}
+impl Default for ExcelConfig {
+    fn default() -> Self {
+        Self {
+            ln_skip: 6,
+            data_ln: 5,
+        }
+    }
 }
 
 fn main() {
