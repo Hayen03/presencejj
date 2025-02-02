@@ -1,13 +1,11 @@
 use std::str::FromStr;
 
 use console::{style, Term};
-use lazy_static::lazy_static;
 use office::{DataType, Excel, Range};
-use regex::Regex;
 
-use crate::{data::{adresse::Adresse, email::Email, tel::Tel}, groupes::{comptes::{Compte, CompteID, CompteReg}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Membre, MembreID, MembreReg}}, prelude::{print_option, O}, Config};
+use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}, Config};
 
-use super::{ExtractError, BOOL_W_COMMENT_DATA_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
+use super::{ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
 
 pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut GroupeReg, config: &Config, filepath: &str, out_term: &Term, err_term: &Term) -> Result<(), ExtractError>{
     let mut wb = match Excel::open(filepath) {
@@ -18,8 +16,8 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
     let sheets = wb.sheet_names().unwrap();
     let mut dc = None;
     for sheet in sheets {
-        let mut rng = wb.worksheet_range(&sheet).unwrap();
-        let mut g = extract_group_info(&rng);
+        let rng = wb.worksheet_range(&sheet).unwrap();
+        let g = extract_group_info(&rng);
         //println!("{} = {}", g.id, g.desc());
 
         // 0. S'assurer qu'il n'y a pas eu d'erreur
@@ -27,7 +25,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
             Ok(mut grp) => {
                 // 1. Voir si le groupe existe déjà. Chq. groupe devrait avoir une description unique
                 let existing_grp = groupes.groupes().filter(|g| g.equiv(&grp)).map(|g| g.id).collect::<Vec<GroupeID>>();
-                let gid = if existing_grp.len() == 0 {
+                let gid = if existing_grp.is_empty() {
                     // 1.1 Si non, rajouter le groupe
                     let id = groupes.get_new_id_from_seed(grp.id.0);
                     grp.id = id;
@@ -57,7 +55,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                         Ok(mut c) => {
                             let cid = {
                                 let existing_compte = comptes.comptes().filter(|cc| cc.equiv(&c)).map(|c| c.id).collect::<Vec<CompteID>>();
-                                if existing_compte.len() > 0 {existing_compte[0]}
+                                if !existing_compte.is_empty() {existing_compte[0]}
                                 else {
                                     let id = comptes.get_new_id_from_seed(c.id.0);
                                     c.id = id;
@@ -67,7 +65,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                                     id
                                 }
                             };
-                            let mut compte = comptes.get_mut(cid).unwrap();
+                            let compte = comptes.get_mut(cid).unwrap();
 
                             match extract_membre_info(ln, dcc) {
                                 Err(e) => {
@@ -77,19 +75,20 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                                     mbr.compte = Some(cid);
                                     let mid = {
                                         let existing_membre = membres.membres().filter(|m| m.equiv(&mbr)).map(|m| m.id).collect::<Vec<MembreID>>();
-                                        if existing_membre.len() > 0 {existing_membre[0]}
+                                        if !existing_membre.is_empty() {existing_membre[0]}
                                         else {
                                             let id = membres.get_new_id_from_seed(mbr.id.0);
                                             mbr.id = id;
-                                            fill_membre_info(ln, dcc, &mut mbr);
+                                            fill_membre_info(ln, dcc, &mut mbr, err_term);
+                                            println!("{:?}", mbr);
                                             let _ = membres.add(mbr);
                                             id
                                         }
                                     };
-                                    let mut membre = membres.get_mut(mid).unwrap();
+                                    let membre = membres.get_mut(mid).unwrap();
 
                                     // ajouter au compte
-                                    let _ = compte.add_membre(&mut membre);
+                                    let _ = compte.add_membre(membre);
 
                                     // ajouter au groupe
                                     grp.add_participant(mid);
@@ -135,11 +134,367 @@ fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
 
 fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membre, ExtractError> {
     let mut mbr = Membre::default();
-    //todo!();
+    let col_nom = match dcc.nom {
+        None => return Err(ExtractError::MissingInformations("Nom")),
+        Some(n) => n,
+    };
+    let col_prenom = match dcc.prenom {
+        None => return Err(ExtractError::MissingInformations("Prénom")),
+        Some(n) => n,
+    };
+    let col_naissance = match dcc.naissance {
+        None => return Err(ExtractError::MissingInformations("Naissance")),
+        Some(n) => n,
+    };
+    mbr.nom = match into_string(&ln[col_nom]) {
+        None => return Err(ExtractError::MissingInformations("Nom")),
+        Some(n) => n,
+    };
+    mbr.prenom = match into_string(&ln[col_prenom]) {
+        None => return Err(ExtractError::MissingInformations("Prénom")),
+        Some(n) => n,
+    };
+    mbr.naissance = match into_string(&ln[col_naissance]) {
+        None => return Err(ExtractError::MissingInformations("Naissance")),
+        Some(n) => {
+            if let Some(cap) = DATE_NAISSANCE_RE.captures(&n) {
+                let an = cap.name("an").unwrap().as_str().parse().unwrap();
+                let mois = cap.name("mois").unwrap().as_str().parse().unwrap();
+                let jour = cap.name("jour").unwrap().as_str().parse().unwrap();
+                match Date::from_ymd_opt(an, mois, jour) {
+                    None => return Err(ExtractError::MissingInformations("Naissance")),
+                    Some(d) => d,
+                }
+            }
+            else {
+                return Err(ExtractError::MissingInformations("Naissance"));
+            }
+        },
+    };
+    mbr.id = MembreID(mbr.get_id_seed());
     Ok(mbr)
 }
-fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre) {
-    //todo!();
+fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, err_term: &Term) {
+    // allergies
+    if let Some(col) = dcc.all_alim {
+        if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
+            if b {
+                membre.fiche_sante.allergies.push(ALL_ALIMENTAIRE.into());
+            }
+            if let Some(s) = c {
+                for a in s.split(&[',', ';']) {
+                    membre.fiche_sante.allergies.push(a.trim().replace('\n', " "));
+                }
+            }
+        }
+    }
+    if let Some(col) = dcc.all_anim {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.allergies.push(ALL_ANIMAUX.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.all_insecte {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.allergies.push(ALL_INSECTES.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.all_peni {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.allergies.push(ALL_PENICILINE.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.all_autre {
+        if let Some((_, Some(s))) = into_bool_with_comment(&ln[col]) {
+            for a in s.split(&[',', ';']) {
+                membre.fiche_sante.allergies.push(a.trim().replace('\n', " "));
+            }
+        }
+    }
+
+    // maladies
+    if let Some(col) = dcc.mal_asthme {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.maladies.push(MAL_ASTHME.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.mal_diabete {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.maladies.push(MAL_DIABETE.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.mal_emo {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.maladies.push(MAL_EMOPHILIE.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.mal_epi {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.fiche_sante.maladies.push(MAL_EPILEPSIE.into());
+            }
+        }
+    }
+    if let Some(col) = dcc.mal_autre {
+        if let Some((_, Some(s))) = into_bool_with_comment(&ln[col]) {
+            for a in s.split(&[',', ';']) {
+                membre.fiche_sante.maladies.push(a.trim().replace('\n', " "));
+            }
+        }
+    }
+
+    // Medicament
+    if let Some(col) = dcc.med_acetaminophene {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.acetaminophene = Some(b);
+        }
+    }
+    if let Some(col) = dcc.med_antibio {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.anti_biotique = Some(b);
+        }
+    }
+    if let Some(col) = dcc.med_antieme {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.anti_emetique = Some(b);
+        }
+    }
+    if let Some(col) = dcc.med_antiinfl {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.anti_inflamatoire = Some(b);
+        }
+    }
+    if let Some(col) = dcc.med_ibu {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.ibuprofene = Some(b);
+        }
+    }
+    if let Some(col) = dcc.med_sirop_toux {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_medicaments.sirop_toux = Some(b);
+        }
+    }
+
+    // Authorisation de soins
+    if let Some(col) = dcc.auth_soins {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.fiche_sante.auth_soins = Some(b);
+        }
+    }
+
+    // problèmes de comportement
+    if let Some(col) = dcc.prob_comportement {
+        println!("Trouvé la colone");
+        if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
+            println!("Lit le bool justifie");
+            let bj = BoolJustifie {
+                reponse: b,
+                justification: c,
+            };
+            membre.fiche_sante.probleme_comportement = Some(bj);
+        }
+    }
+
+    // prise de médicament
+    if let Some(col) = dcc.prise_med {
+        if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
+            let bj = BoolJustifie {
+                reponse: b,
+                justification: c,
+            };
+            membre.fiche_sante.prise_med = Some(bj);
+        }
+    }
+
+    // carte d'assurance maladies
+    if let Some(col) = dcc.cam {
+        if let Some(s) = into_string(&ln[col]) {
+            match CAM::from_str(&s) {
+                Ok(cam) => membre.fiche_sante.cam = Some(cam),
+                Err(_) => {let _ = err_term.write_line(&format!("Erreur en lisant le CAM: {}", s));},
+            }
+        }
+    }
+
+    // genre
+    if let Some(col) = dcc.genre {
+        if let Some(s) = into_string(&ln[col]) {
+            match Genre::from_str(&s) {
+                Ok(genre) => membre.genre = Some(genre),
+                Err(_) => {let _ = err_term.write_line(&format!("Erreur en lisant le genre: {}", s));},
+            }
+        }
+    }
+
+    // interets
+    if let Some(col) = dcc.interet_1 {
+        if let Some(s) = into_string(&ln[col]) {
+            match Interet::from_str(&s) {
+                Ok(interet) => membre.interets[0] = Some(interet),
+                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+            }
+        }
+    }
+    if let Some(col) = dcc.interet_2 {
+        if let Some(s) = into_string(&ln[col]) {
+            match Interet::from_str(&s) {
+                Ok(interet) => membre.interets[1] = Some(interet),
+                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+            }
+        }
+    }
+    if let Some(col) = dcc.interet_3 {
+        if let Some(s) = into_string(&ln[col]) {
+            match Interet::from_str(&s) {
+                Ok(interet) => membre.interets[2] = Some(interet),
+                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+            }
+        }
+    }
+    if let Some(col) = dcc.interet_4 {
+        if let Some(s) = into_string(&ln[col]) {
+            match Interet::from_str(&s) {
+                Ok(interet) => membre.interets[3] = Some(interet),
+                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+            }
+        }
+    }
+
+    // contacts
+    if let Some(col) = dcc.contact_1_nom {
+        if let Some(nom) = into_string(&ln[col]) {
+            let mut contact = Contact {nom, tel: None, lien: None};
+            if let Some(col) = dcc.contact_1_tel {
+                if let Some(s) = into_string(&ln[col]) {
+                    if let Ok(tel) = Tel::from_str(s.trim()) {
+                        contact.tel = Some(tel);
+                    }
+                }
+            }
+            if let Some(col) = dcc.contact_1_lien {
+                if let Some(s) = into_string(&ln[col]) {
+                    contact.lien = Some(s.trim().into())
+                }
+            }
+            membre.contacts[0] = Some(contact);
+        }
+    }
+    if let Some(col) = dcc.contact_2_nom {
+        if let Some(nom) = into_string(&ln[col]) {
+            let mut contact = Contact {nom, tel: None, lien: None};
+            if let Some(col) = dcc.contact_2_tel {
+                if let Some(s) = into_string(&ln[col]) {
+                    if let Ok(tel) = Tel::from_str(s.trim()) {
+                        contact.tel = Some(tel);
+                    }
+                }
+            }
+            if let Some(col) = dcc.contact_2_lien {
+                if let Some(s) = into_string(&ln[col]) {
+                    contact.lien = Some(s.trim().into())
+                }
+            }
+            membre.contacts[1] = Some(contact);
+        }
+    }
+
+    // accompagnement
+    if let Some(col) = dcc.accompagnement {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.accompagnement = Some(b);
+        }
+    }
+
+    // quitte avec
+    if let Some(col) = dcc.quit_parent {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.quitte.avec.push("Parent".into());
+            }
+        }
+    }
+    if let Some(col) = dcc.quit_seul {
+        if let Some(b) = into_bool(&ln[col]) {
+            if b {
+                membre.quitte.avec.push("Seul".into());
+            }
+        }
+    }
+    if let Some(col) = dcc.quit_acceuil {
+        if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
+            if b {
+                match c {
+                    None => membre.quitte.avec.push("Service d'accueil".into()),
+                    Some(c) => membre.quitte.avec.push(format!("Service d'accueil: {}", c)),
+                }
+            }
+        }
+    }
+    if let Some(col) = dcc.quit_autre {
+        if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
+            if b {
+                match c {
+                    None => membre.quitte.avec.push("Autre".into()),
+                    Some(c) => membre.quitte.avec.push(format!("Autre: {}", c)),
+                }
+            }
+        }
+    }
+    if let Some(col) = dcc.mdp {
+        if let Some(s) = into_string(&ln[col]) {
+            membre.quitte.mdp = Some(s);
+        }
+    }
+
+    // piscine
+    if let Some(col) = dcc.vfi {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.piscine.vfi = Some(b);
+        }
+    }
+    if let Some(col) = dcc.auth_partage_sauveteur {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.piscine.partage = Some(b);
+        }
+    }
+    if let Some(col) = dcc.tete_sous_eau {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.piscine.tete_sous_eau = Some(b);
+        }
+    }
+
+    // taille
+    if let Some(col) = dcc.taille {
+        if let Some(s) = into_string(&ln[col]) {
+            match Taille::from_str(&s) {
+                Ok(t) => membre.taille = Some(t),
+                Err(_e) => { let _ = err_term.write_line("Erreur en lisant la taille"); }
+            }
+        }
+    }
+
+    // authorisation photo
+    if let Some(col) = dcc.auth_photo {
+        if let Some(b) = into_bool(&ln[col]) {
+            membre.auth_photo = Some(b);
+        }
+    }
+
+    // commentaires
+    if let Some(col) = dcc.commentaire {
+        membre.commentaire = into_string(&ln[col]);
+    }
 }
 
 fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Compte, ExtractError> {
@@ -154,24 +509,15 @@ fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Compte, E
     };
     if let Some(col_email) = dcc.courriel {
         let email = into_string(&ln[col_email]).map(|s| Email::from_str(&s).ok());
-        cmpt.email = match email {
-            None => None,
-            Some(o) => o,
-        };
+        cmpt.email = email.unwrap_or_default();
     }
     if let Some(col_tel) = dcc.tel {
         let t = into_string(&ln[col_tel]).map(|s| Tel::from_str(&s).ok());
-        cmpt.tel = match t {
-            None => None,
-            Some(o) => o,
-        };
+        cmpt.tel = t.unwrap_or_default();
     }
     if let Some(col_adr) = dcc.adresse {
         let adr = into_string(&ln[col_adr]).map(|s| Adresse::from_full(&s).ok());
-        cmpt.adresse = match adr {
-            None => None,
-            Some(o) => o,
-        };
+        cmpt.adresse = adr.unwrap_or_default();
     }
     cmpt.id = CompteID(cmpt.get_id_seed());
     Ok(cmpt)
@@ -200,9 +546,9 @@ pub fn into_bool(data: &DataType) -> O<bool> {
         DataType::Int(i) => Some(*i == 0),
         DataType::Float(f) => Some(*f == 0.0),
         DataType::String(s) => {
-            if TRUE_DATA_RE.is_match(&s) {
+            if TRUE_DATA_RE.is_match(s) {
                 Some(true)
-            } else if FALSE_DATA_RE.is_match(&s) {
+            } else if FALSE_DATA_RE.is_match(s) {
                 Some(false)
             } else {
                 None
@@ -304,7 +650,7 @@ impl DataColConfig {
             accompagnement: DataColConfig::search(&cols, "Accompagnement"),
             cam: DataColConfig::search(&cols, "assurance maladie"),
             auth_soins: DataColConfig::search(&cols, "Autorisation de soigner"),
-            prob_comportement: DataColConfig::search(&cols, "Problème de comportement?"),
+            prob_comportement: DataColConfig::search(&cols, "Problèmes de comportement?"),
             prise_med: DataColConfig::search(&cols, "Prise de Médicament"),
             med_acetaminophene: DataColConfig::search(&cols, "Med Acétaminophène"),
             med_antibio: DataColConfig::search(&cols, "Med Antibiotique"),

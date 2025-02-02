@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::{error::Error, fmt::{self, Display}};
+use std::{error::Error, fmt::{self, Display}, str::FromStr};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -33,6 +33,18 @@ impl Display for Genre {
         }
     }
 }
+impl FromStr for Genre {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let ls = s.to_lowercase();
+        match ls.as_str() {
+            "homme" => Ok(Self::Homme),
+            "femme" => Ok(Self::Femme),
+            _ => Ok(Self::Autre),
+        }
+    }
+    
+    type Err = ParsingError;
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Taille {
@@ -52,6 +64,20 @@ impl Display for Taille {
             Self::L => write!(f, "L"),
             Self::XL => write!(f, "XL"),
             Self::XXL => write!(f, "XXL"),
+        }
+    }
+}
+impl FromStr for Taille {
+    type Err = ParsingError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "xs" => Ok(Self::XS),
+            "s" => Ok(Self::S),
+            "m" => Ok(Self::M),
+            "l" => Ok(Self::L),
+            "xl" => Ok(Self::XL),
+            "xxl" => Ok(Self::XXL),
+            _ => Err(ParsingError::from_msg("N'a pu lire la taille")),
         }
     }
 }

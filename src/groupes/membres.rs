@@ -1,7 +1,7 @@
-use crate::{data::{tel::Tel, Genre, Taille}, prelude::*};
-use std::{collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
+use crate::{data::{tel::Tel, Genre, ParsingError, Taille}, prelude::*};
+use std::{collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, str::FromStr};
 
-use super::{comptes::{Compte, CompteID}, fiche_sante::FicheSante, RegError};
+use super::{comptes::CompteID, fiche_sante::FicheSante, RegError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct MembreID(pub u32);
@@ -79,6 +79,18 @@ impl Display for Interet {
         }
     }
 }
+impl FromStr for Interet {
+    type Err = ParsingError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "science" => Ok(Self::Science),
+            "art" => Ok(Self::Art),
+            "nature" => Ok(Self::Nature),
+            "sport" => Ok(Self::Sport),
+            _ => Err(ParsingError::from_msg("N'a pu lire l'intéret")),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct Contact {
@@ -89,15 +101,15 @@ pub struct Contact {
 
 #[derive(Debug, Clone, Default)]
 pub struct Quitte {
-    avec: Vec<String>,
-    mdp: O<String>,
+    pub avec: Vec<String>,
+    pub mdp: O<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Piscine {
-    partage: O<bool>,
-    vfi: O<bool>,
-    tete_sous_eau: O<bool>,
+    pub partage: O<bool>,
+    pub vfi: O<bool>,
+    pub tete_sous_eau: O<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -123,11 +135,10 @@ impl MembreReg {
         self.reg.contains_key(&mid)
     }
     pub fn add(&mut self, membre: Membre) -> Result<(), RegError<MembreID>> {
-        if self.reg.contains_key(&membre.id) {Err(RegError::KeyAlreadyInReg(membre.id))}
-        else {
-            self.reg.insert(membre.id, membre);
+        if let std::collections::hash_map::Entry::Vacant(e) = self.reg.entry(membre.id) {
+            e.insert(membre);
             Ok(())
-        }
+        } else {Err(RegError::KeyAlreadyInReg(membre.id))}
     }
     pub fn remove(&mut self, mid: MembreID) -> Result<Membre, RegError<MembreID>> {
         match self.reg.remove(&mid) {
@@ -147,10 +158,10 @@ impl MembreReg {
             Option::Some(m) => Ok(m),
         }
     }
-    pub fn membres<'a>(&'a self) -> MembreIter<'a, impl Iterator<Item=&'a Membre>> {
+    pub fn membres(&self) -> MembreIter<'_, impl Iterator<Item=&'_ Membre>> {
         MembreIter(self.reg.values())
     }
-    pub fn membres_mut<'a>(&'a mut self) -> MembreIterMut<'a, impl Iterator<Item=&'a mut Membre>> {
+    pub fn membres_mut(&mut self) -> MembreIterMut<'_, impl Iterator<Item=&'_ mut Membre>> {
         MembreIterMut(self.reg.values_mut())
     }
 }
