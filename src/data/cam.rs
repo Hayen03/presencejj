@@ -127,8 +127,8 @@ impl fmt::Display for NAM {
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Default, Copy)]
 pub struct CAM {
-	num: NAM,
-	exp: (i32, u8),
+	pub num: NAM,
+	pub exp: (i32, u8),
 }
 impl CAM {
 	pub fn parse(s: &str) -> ParsingResult<CAM> {
@@ -191,6 +191,12 @@ impl CAM {
 			num,
 			exp: (expan, expm),
 		}
+	}
+	pub fn exp_mois(&self) -> u8 {
+		self.exp.1
+	}
+	pub fn exp_an(&self) -> i32 {
+		self.exp.0
 	}
 }
 impl fmt::Display for CAM {

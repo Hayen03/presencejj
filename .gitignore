@@ -23,3 +23,6 @@ srsrc/*
 
 # ignore les fichiers de données dans test
 tests/*
+out/*
+
+*.DS_Store

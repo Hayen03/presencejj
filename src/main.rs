@@ -4,6 +4,7 @@ use extract::excel::fill_regs;
 use groupes::{comptes::CompteReg, groupes::GroupeReg, membres::MembreReg};
 use lazy_static::lazy_static;
 use prelude::excel_col_to_num;
+use print::typst::print_fiche_med;
 use regex::Regex;
 
 pub mod data;
@@ -59,6 +60,11 @@ fn main() {
         f = &f[1..f.len()-1]
     }
 
-    fill_regs(&mut compte_reg, &mut membre_reg, &mut groupe_reg, &config, &f, &out_term, &err_term);
+    let _ = fill_regs(&mut compte_reg, &mut membre_reg, &mut groupe_reg, &config, &f, &out_term, &err_term);
+
+    for membre in membre_reg.membres() {
+        let compte = compte_reg.get(membre.compte.unwrap()).unwrap();
+        print_fiche_med(membre, compte, "./out".into()).unwrap();
+    }
 
 }
