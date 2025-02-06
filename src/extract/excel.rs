@@ -3,7 +3,8 @@ use std::str::FromStr;
 use console::{style, Term};
 use office::{DataType, Excel, Range};
 
-use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}, Config};
+use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}};
+use crate::config::Config;
 
 use super::{ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
 
@@ -59,8 +60,8 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                                 else {
                                     let id = comptes.get_new_id_from_seed(c.id.0);
                                     c.id = id;
-                                    let _ = out_term.write_line(&format!("{} = {} {} #{}", c.id, c.mandataire, print_option(&c.email), print_option(&c.tel)));
-                                    let _ = out_term.write_line(&format!("\t{}", print_option(&c.adresse)));
+                                    //let _ = out_term.write_line(&format!("{} = {} {} #{}", c.id, c.mandataire, print_option(&c.email), print_option(&c.tel)));
+                                    //let _ = out_term.write_line(&format!("\t{}", print_option(&c.adresse)));
                                     let _ = comptes.add(c);
                                     id
                                 }
@@ -80,7 +81,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                                             let id = membres.get_new_id_from_seed(mbr.id.0);
                                             mbr.id = id;
                                             fill_membre_info(ln, dcc, &mut mbr, err_term);
-                                            println!("{:?}", mbr);
+                                            //println!("{:?}", mbr);
                                             let _ = membres.add(mbr);
                                             id
                                         }
@@ -295,9 +296,9 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
 
     // problèmes de comportement
     if let Some(col) = dcc.prob_comportement {
-        println!("Trouvé la colone");
+        //println!("Trouvé la colone");
         if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
-            println!("Lit le bool justifie");
+            //println!("Lit le bool justifie");
             let bj = BoolJustifie {
                 reponse: b,
                 justification: c,

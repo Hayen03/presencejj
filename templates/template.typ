@@ -1,6 +1,22 @@
 #let exists(var) = {
   var != none and var != "" and var != [] and var != () and var != (:) and not (type(var) == str and var.trim() == "")
 }
+#let hr(fill: black) = {
+  set block(above: 5pt, below: 5pt)
+  line(length: 100%, stroke: fill)
+}
+#let print_bool(val) = {
+	if not exists(val) []
+	else if val [OUI]
+	else [NON]
+}
+#let ansline() = line(start:(2%, 0.8em), end: (98%, 0.8em), stroke: 0.4pt)
+#let als(amount) = {
+  for _ in range(amount) {
+    ansline()
+  }
+}
+#let ila() = box(line(start:(2%, 0.8em), end: (98%, 0.8em), stroke: 0.4pt), width: 1fr)
 
 #let new_naissance(an: none, mois: none, jour: none) = (
 	an: an,
@@ -88,5 +104,93 @@
 #let fiche_med(doc, 
 	enfant: new_enfant(),
 ) = [
-	= #enfant.nom, #enfant.prenom
+
+	#show heading.where(depth: 1): set text(size: 28pt)
+	#show heading.where(depth: 2): set text(size: 18pt)
+	#show heading.where(depth: 3): set text(size: 14pt)
+
+	#grid(columns: (1fr, auto))[
+		#align(left + bottom)[= Fiche Santé]
+	][
+		#image("doc_skia.png", width: 2.5in)
+	]
+	#hr()
+
+	== #enfant.nom, #enfant.prenom
+
+	#grid(columns: (1fr, 1fr))[
+		/ Date de naissance: #enfant.naissance (#enfant.age ans)
+		/ Genre: #enfant.genre
+		/ Assurance Maladie: #enfant.cam.nam #enfant.cam.exp_mois;/#enfant.cam.exp_year
+	][
+		/ Mandataire: #enfant.compte.mandataire
+		/ Telephone: #enfant.compte.tel
+		/ Adresse: #enfant.compte.adresse
+		/ Courriel: #enfant.compte.email
+	]
+
+	#v(1fr)
+
+	#grid(columns: (1fr, 1fr))[
+		/ Authorisation de soigner: #if exists(enfant.auth_soins) {print_bool(enfant.auth_soins)}
+		#let tc = if exists(enfant.prob_comportement) {print_bool(enfant.prob_comportement.val)}
+		/ Trouble de comportement: #if exists(enfant.prob_comportement) [#tc#if exists(tc) and exists(enfant.prob_comportement.just) [, ]#if exists(enfant.prob_comportement.just) {enfant.prob_comportement.just}]
+		#let pm = if exists(enfant.prise_med) {print_bool(enfant.prise_med.val)}
+		/ Prise de médicament: #if exists(enfant.prise_med) [#pm#if exists(pm) and exists(enfant.prise_med.just) [, ]#if exists(enfant.prise_med.just) {enfant.prise_med.just}]
+	][
+		/ Allergies: #enfant.allergies.join(", ")
+		/ Maladies: #enfant.maladies.join(", ")
+	]
+
+	#v(1fr)
+
+	=== Médicament authorisés
+	#grid(columns: (1fr, 1fr, 1fr), row-gutter: 0.5em)[
+		/ Acetaminophene: #print_bool(enfant.medicaments.acetaminophene)
+	][
+		/ Antibiotique: #print_bool(enfant.medicaments.antibiotique)
+	][
+		/ Anti-emetique: #print_bool(enfant.medicaments.antiemetique)
+	][
+		/ Anti-inflamatoire: #print_bool(enfant.medicaments.anti_inflamatoire)
+	][
+		/ Ibuprofene: #print_bool(enfant.medicaments.ibuprofene)
+	][
+		/ Sirop pour la toux: #print_bool(enfant.medicaments.sirop_toux)
+	]
+
+	#v(1fr)
+
+	#grid(columns: (1fr, 1fr))[
+		=== Contact d'urgence 1
+		/ Nom: #if exists(enfant.contact_1) {enfant.contact_1.nom}
+		/ Telephone: #if exists(enfant.contact_1) {enfant.contact_1.tel}
+		/ Lien: #if exists(enfant.contact_1) {enfant.contact_1.lien}
+	][
+		=== Contact d'urgence 2
+		/ Nom: #if exists(enfant.contact_2) {enfant.contact_2.nom}
+		/ Telephone: #if exists(enfant.contact_2) {enfant.contact_2.tel}
+		/ Lien: #if exists(enfant.contact_2) {enfant.contact_2.lien}
+	]
+
+	#v(1fr)
+
+	#grid(columns: (1fr, 1fr))[
+		=== Piscine
+		/ Authorisation de partage: #print_bool(enfant.piscine.auth_partage)
+		/ VFI obligatoire: #print_bool(enfant.piscine.vfi)
+		/ Peut mettre sa tête sous l'eau: #print_bool(enfant.piscine.tete_sous_eau)
+	][
+		=== Autre
+		/ Quitte avec: #enfant.quitte.join(", ")
+		/ Mot de passe: #enfant.mdp
+		/ Authorisation photo: #print_bool(enfant.auth_photo)
+		/ Commentaire: #enfant.commentaire
+	]
+
+	#v(1fr)
+
+	#align(bottom, grid(columns: (1fr, 1fr))[
+		/ Signature: #ila()
+	][])
 ]

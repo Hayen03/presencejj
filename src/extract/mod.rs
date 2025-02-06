@@ -1,10 +1,8 @@
 use std::{error::Error, fmt::Display};
 
 use lazy_static::lazy_static;
-use office::DataType;
 use regex::Regex;
 
-use crate::prelude::O;
 
 pub mod excel;
 

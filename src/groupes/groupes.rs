@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use crate::prelude::*;
-use super::{membres::{Interet, MembreID}, RegError};
+use super::{membres::MembreID, RegError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct GroupeID(pub u32);

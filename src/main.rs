@@ -1,11 +1,9 @@
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
 
+use config::Config;
 use extract::excel::fill_regs;
 use groupes::{comptes::CompteReg, groupes::GroupeReg, membres::MembreReg};
-use lazy_static::lazy_static;
-use prelude::excel_col_to_num;
 use print::typst::print_fiche_med;
-use regex::Regex;
 
 pub mod data;
 pub mod extract;
@@ -13,33 +11,8 @@ pub mod groupes;
 pub mod prelude;
 pub mod print;
 pub mod ui;
+pub mod config;
 
-pub struct Config {
-    out_dir: String, 
-    verbose: bool,
-    excel: ExcelConfig,
-}
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            out_dir: "./out".into(),
-            verbose: true,
-            excel: ExcelConfig::default(),
-        }
-    }
-}
-pub struct ExcelConfig {
-    ln_skip: usize,
-    data_ln: usize,
-}
-impl Default for ExcelConfig {
-    fn default() -> Self {
-        Self {
-            ln_skip: 6,
-            data_ln: 5,
-        }
-    }
-}
 
 fn main() {
     let out_term = console::Term::stdout();
@@ -64,7 +37,7 @@ fn main() {
 
     for membre in membre_reg.membres() {
         let compte = compte_reg.get(membre.compte.unwrap()).unwrap();
-        print_fiche_med(membre, compte, "./out".into()).unwrap();
+        print_fiche_med(membre, compte, &config, "test", true).unwrap();
     }
 
 }

@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock, Weak};
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::NaiveDate;
 use lazy_static::lazy_static;
 
 pub type R<T, E> = Result<T, E>;

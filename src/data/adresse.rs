@@ -1,9 +1,9 @@
 
 use std::{
-	borrow::Borrow, collections::BTreeMap, fmt::{self, Display}, num, str, sync::{Arc, RwLock}
+	borrow::Borrow, fmt::{self, Display}, str, sync::Arc
 };
 
-use crate::{prelude::*};
+use crate::prelude::*;
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -124,7 +124,7 @@ impl Adresse {
 			}
 			adr.ville = Some(cap.name("ville").unwrap().as_str().into());
 			adr.province = Some(cap.name("province").unwrap().as_str().into());
-			let mut pays: String = cap.name("rue").unwrap().as_str().into();
+			let mut pays: String = cap.name("pays").unwrap().as_str().into();
 			if pays == "CA" {
 				pays = String::from("Canada");
 			}

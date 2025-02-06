@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::{fmt::{self, Display}, str};
+use std::{fmt::{self}, str};
 
 use super::{ParsingError, ParsingResult};
 
