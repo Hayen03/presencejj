@@ -1,6 +1,8 @@
 use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
-use crate::prelude::*;
+use lazy_static::lazy_static;
+
+use crate::{prelude::*, print::typst::PresenceSDJInfo};
 use super::{membres::MembreID, RegError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -11,6 +13,10 @@ impl Display for GroupeID {
     }
 }
 
+lazy_static!{
+    pub static ref NULL_GROUPE: Groupe = Groupe::default();
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Groupe {
     pub id: GroupeID,
@@ -18,7 +24,6 @@ pub struct Groupe {
     pub site: O<String>,
     pub category: O<String>,
     pub discriminant: O<String>,
-    pub animateur: O<String>,
     pub semaine: O<String>,
     pub activite: O<String>,
     pub participants: HashSet<MembreID>,
@@ -41,7 +46,7 @@ impl Groupe {
     pub fn get_site(&self) -> O<&str> {self.site.as_ref().map(String::as_str)}
     pub fn get_category(&self) -> O<&str> {self.category.as_ref().map(String::as_str)}
     pub fn get_discriminant(&self) -> O<&str> {self.discriminant.as_ref().map(String::as_str)}
-    pub fn get_animateur(&self) -> O<&str> {self.animateur.as_ref().map(String::as_str)}
+   //pub fn get_animateur(&self) -> O<&str> {self.animateur.as_ref().map(String::as_str)}
     pub fn get_semaine(&self) -> O<&str> {self.semaine.as_ref().map(String::as_str)}
 
     pub fn has_participant(&self, mid: MembreID) -> bool {
@@ -82,15 +87,23 @@ impl Groupe {
     }
 
     pub fn desc(&self) -> String {
-        format!("{}: {} | {} | {} | Sem. {} - {} ({})", 
+        format!("{}: {} | {} | {} | Sem. {} - {}", 
             print_option(&self.saison),
             print_option(&self.activite),
             print_option(&self.site),
             print_option(&self.category),
             print_option(&self.semaine),
             print_option(&self.discriminant),
-            print_option(&self.animateur),
+            //print_option(&self.animateur),
         )
+    }
+
+    pub fn get_sdj_info<'a>(&'a self) -> PresenceSDJInfo<'a> {
+        PresenceSDJInfo{
+            saison: self.saison.as_ref().map(String::as_str),
+            site: self.site.as_ref().map(String::as_str),
+            semaine: self.semaine.as_ref().map(String::as_str),
+        }
     }
 }
 
@@ -174,4 +187,5 @@ pub struct SousGroupe {
     pub disc: u32,
     pub participants: HashSet<MembreID>,
     pub groupe: GroupeID,
+    pub animateur: O<String>,
 }

@@ -1,5 +1,7 @@
+use lazy_static::lazy_static;
+
 use crate::{data::{tel::Tel, Genre, ParsingError, Taille}, prelude::*};
-use std::{collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, str::FromStr};
 
 use super::{comptes::CompteID, fiche_sante::FicheSante, RegError};
 
@@ -9,6 +11,10 @@ impl Display for MembreID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "M{:08x}", self.0)
     }
+}
+
+lazy_static!{
+    pub static ref NULL_MEMBRE: Membre = Membre::default();
 }
 
 #[derive(Clone, Debug, Default)]
@@ -57,6 +63,14 @@ impl Membre {
         self.prenom.hash(&mut hasher);
         self.naissance.hash(&mut hasher);
         hasher.finish() as u32
+    }
+    pub fn cmp_nom(&self, other: &Self) -> Ordering {
+        let c = self.nom.cmp(&other.nom);
+        if let Ordering::Equal = c {
+            self.prenom.cmp(&other.prenom)
+        } else {
+            c
+        }
     }
 }
 

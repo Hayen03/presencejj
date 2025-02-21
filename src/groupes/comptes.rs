@@ -1,5 +1,7 @@
 use std::{collections::{hash_map::Values, HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, iter::{Filter, Map}};
 
+use lazy_static::lazy_static;
+
 use crate::data::adresse::Adresse;
 use crate::data::tel::Tel;
 use crate::prelude::*;
@@ -14,6 +16,10 @@ impl Display for CompteID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "C{:08x}", self.0)
     }
+}
+
+lazy_static!{
+    pub static ref NULL_COMPTE: Compte = Compte::default();
 }
 
 #[derive(Debug, Clone, Default)]

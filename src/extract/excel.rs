@@ -128,7 +128,7 @@ fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
         }
     }
     g.discriminant = into_string(ws.get_value(1, 0));
-    g.animateur = into_string(ws.get_value(3, 0));
+    //g.animateur = into_string(ws.get_value(3, 0));
     g.id = GroupeID(g.get_id_seed());
     Ok(g)
 }

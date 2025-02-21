@@ -58,6 +58,7 @@
 )
 
 #let new_enfant(
+	id: none,
 	nom: none,
 	prenom: none,
 	naissance: none,
@@ -79,6 +80,7 @@
 	auth_photo: none,
 	commentaire: none,
 ) = (
+	id: id,
 	nom: nom,
 	prenom: prenom,
 	naissance: naissance,
@@ -99,6 +101,18 @@
 	piscine: piscine,
 	auth_photo: auth_photo,
 	commentaire: commentaire,
+)
+
+#let new_groupe(saison: none, site: none, categorie: none, discriminant: none, animateur: none, semaine: none, activite: none, profil: none, groupe_num: none) = (
+	saison: saison,
+	site: site,
+	categorie: categorie,
+	discriminant: discriminant,
+	animateur: animateur,
+	semaine: semaine,
+	activite: activite,
+	profil: profil,
+	groupe_num: groupe_num,
 )
 
 #let fiche_med(doc, 
@@ -194,3 +208,166 @@
 		/ Signature: #ila()
 	][])
 ]
+
+#let check_cell_size = 0.8cm
+#let mk_presence_anim_row(num: none, enfant: new_enfant()) = (
+	table.cell(rowspan:2, breakable: false, align(center+horizon)[#num]),
+	[#enfant.nom, #enfant.prenom],
+	[#enfant.naissance (#enfant.age ans)],
+	table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], 
+	table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], 
+	table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], 
+	table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], 
+	table.cell(rowspan: 2)[], table.cell(rowspan: 2)[], table.cell(rowspan: 2)[],
+	table.cell(colspan: 2)[
+		#let bloc = ()
+		#if exists(enfant.allergies) {bloc.push[*Allergies:* #enfant.allergies.join(", ")]}
+		#if exists(enfant.compte.mandataire) {bloc.push[*Mandataire:* #enfant.compte.mandataire#if exists(enfant.compte.tel) [, #enfant.compte.tel]]}
+		#bloc.filter(it => exists(it)).join("; ")
+	],
+)
+#let color_anim_table(col, row) = {
+	if row == 0 {
+		return white
+	}
+	let n = calc.rem(row - 1, 4)
+	if n < 2 {
+		rgb("E0E0E0")
+	} else {
+		white
+	}
+}
+#let presence_anim(doc, groupe: new_groupe(), participants: ()) = [
+	#set page(paper: "us-letter", flipped: true, margin: 1cm)
+
+	#show heading.where(depth: 1): set text(size: 24pt)
+	#show heading.where(depth: 2): set text(size: 18pt)
+	#show heading.where(depth: 3): set text(size: 14pt)
+
+	#set table(fill: color_anim_table)
+
+	#grid(columns: (1fr, auto))[
+		#let ln = (
+			//if exists(groupe.saison) [#groupe.saison],
+			if exists(groupe.activite) [#groupe.activite],
+			if exists(groupe.site) [#groupe.site],
+			if exists(groupe.categorie) [#groupe.categorie],
+			if exists(groupe.semaine) [sem. #groupe.semaine],
+		).filter(it => exists(it))
+		= #ln.join(" | ") 
+		#let ln = (
+			if exists(groupe.discriminant) [#groupe.discriminant],
+			if exists(groupe.groupe_num) [#groupe.groupe_num],
+			if exists(groupe.profil) [profil #groupe.profil],
+			if exists(groupe.animateur) [(#groupe.animateur)],
+		).filter(it => exists(it))
+		#if ln.len() > 0 [== #ln.join(" ")]
+		== Liste de Présence Animateur
+	][
+		#align(center+horizon, image("doc_skia.png", width: 2.5in))
+	]
+
+	#let cells = ()
+	// remplir les cellules des enfants
+	#for (num, enf) in participants.enumerate() {
+		cells = cells + mk_presence_anim_row(num: num, enfant: enf)
+	}
+
+	#table(columns: (auto, 1fr, auto, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size),
+	table.header(repeat: true, [*\#*], [*Nom, Prénom*], [], table.cell(colspan: 3, align(center, [*Lundi*])), table.cell(colspan: 3, align(center, [*Mardi*])), table.cell(colspan: 3, align(center, [*Mercredi*])), table.cell(colspan: 3, align(center, [*Jeudi*])), table.cell(colspan: 3, align(center, [*Vendredi*]))),
+	..cells,
+	)
+]
+
+#let sign_cell_size = 3*check_cell_size
+#let mk_sdj_row(enfant: new_enfant(), groupe: new_groupe()) = (
+	if exists(enfant.mdp) {table.cell(rowspan: 3, breakable: false, align(center+horizon)[#enfant.mdp])} else {table.cell(rowspan: 3, breakable: false)[]},
+	table.cell(rowspan: 2)[#enfant.nom, #enfant.prenom],
+	table.cell(rowspan: 2)[#enfant.naissance (#enfant.age ans); *Quitte Avec:* #enfant.quitte.join(", ")],
+	[], [], [], [], [], [], [], [], [], [],
+	table.cell(colspan: 7)[
+		#let grp = (
+			if exists(groupe.categorie) [#groupe.categorie],
+			if exists(groupe.discriminant) [#groupe.discriminant],
+			if exists(groupe.profil) [profil #groupe.profil],
+			if exists(groupe.animateur) [(#groupe.animateur)],
+		).filter(it => exists(it))
+		#let bloc = (
+			if exists(enfant.allergies) [*Allergies: * #enfant.allergies.join(", ")],
+			if exists(enfant.compte.mandataire) [*Mandataire: * #enfant.compte.mandataire],
+			if exists(grp) [*Groupe:* #grp.join(" ")],
+		)
+		#bloc.filter(it => exists(it)).join("; ")
+	],
+)
+#let color_sdg_table(col, row) = {
+	if row == 0 {
+		return white
+	}
+	let n = calc.rem(row - 1, 6)
+	if n < 3 {
+		rgb("E0E0E0")
+	} else {
+		white
+	}
+}
+#let presence_sdj(
+	site: none,
+	saison: none,
+	semaine: none,
+	groupes: (:),
+	participants: (),
+) = [
+		#set page(paper: "us-letter", flipped: true, margin: 1cm)
+
+	#show heading.where(depth: 1): set text(size: 24pt)
+	#show heading.where(depth: 2): set text(size: 18pt)
+	#show heading.where(depth: 3): set text(size: 14pt)
+
+	#set table(fill: color_sdg_table)
+
+	#grid(columns: (1fr, auto))[
+		#let ln = (
+			if exists(site) [#site],
+			if exists(semaine) [sem. #semaine],
+		).filter(it => exists(it))
+		= #ln.join(" | ") 
+		== Liste de Présence SDJ
+	][
+		#align(center+horizon, image("doc_skia.png", width: 2.5in))
+	]
+
+	#let cells = ()
+	#for membre in participants {
+		cells = cells + mk_sdj_row(enfant: membre, groupe: groupes.at(membre.id))
+	}
+
+	#table(columns: (2cm, 4cm, 1fr, sign_cell_size, sign_cell_size, sign_cell_size, sign_cell_size, sign_cell_size), rows: auto,
+	table.header(repeat: true, align(center)[*MDP*], [*Nom, Prénom*], [], align(center)[*Lundi*], align(center)[*Mardi*], align(center)[*Mercredi*], align(center)[*Jeudi*], align(center)[*Vendredi*],
+	),
+	..cells
+	)
+]
+
+/*
+(
+	if exists(enfant.mdp) {table.cell(rowspan: 3, breakable: false, align(center+horizon)[#enfant.mdp])} else [],
+	table.cell(rowspan: 2)[#enfant.nom, #enfant.prenom],
+	table.cell(rowspan: 2)[#enfant.naissance (#enfant.age ans); *Quitte Avec:* #enfant.quitte.join(", ")],
+	[], [], [], [], [], [], [], [], [], [],
+	table.cell(colspan: 7)[
+		#let grp = (
+			if exists(groupe.categorie) [#groupe.categorie],
+			if exists(groupe.discriminant) [#groupe.discriminant],
+			if exists(groupe.profil) [profil #groupe.profil],
+			if exists(groupe.animateur) [(#groupe.animateur)],
+		).filter(it => exists(it))
+		#let bloc = (
+			if exists(enfant.allergies) [*Allergies: * #enfant.allergies.join(", ")],
+			if exists(enfant.compte.mandataire) [*Mandataire: * #enfant.compte.mandataire],
+			if exists(grp) [*Groupe:* #grp.join(" ")],
+		)
+		#bloc.filter(it => exists(it)).join("; ")
+	],
+)
+*/
