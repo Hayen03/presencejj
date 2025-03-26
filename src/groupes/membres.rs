@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use strum_macros::EnumIter;
 
 use crate::{data::{tel::Tel, Genre, ParsingError, Taille}, prelude::*};
 use std::{cmp::Ordering, collections::HashMap, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, str::FromStr};
@@ -76,7 +77,8 @@ impl Membre {
 
 
 pub type Interets = [O<Interet>; 4];
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub static INTERETS_POINTS: [u32; 4] = [8, 4, 2, 0];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, Hash)]
 pub enum Interet {
     Science,
     Sport,
@@ -102,6 +104,16 @@ impl FromStr for Interet {
             "nature" => Ok(Self::Nature),
             "sport" => Ok(Self::Sport),
             _ => Err(ParsingError::from_msg("N'a pu lire l'intéret")),
+        }
+    }
+}
+impl Interet {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Science => "Science",
+            Self::Art => "Art",
+            Self::Nature => "Nature",
+            Self::Sport => "Sport",
         }
     }
 }

@@ -1,6 +1,6 @@
 use chrono::{Datelike, Local};
 
-use crate::{config::Config, data::cam::CAM, groupes::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Membre, MembreID, MembreReg}}};
+use crate::{config::Config, data::cam::CAM, groupes::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
 
 use super::PrintError;
 use core::str;
@@ -73,7 +73,7 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 		semaine=groupe.semaine.as_ref().map(String::as_str).unwrap_or("none"),
 		activite=groupe.activite.as_ref().map(String::as_str).unwrap_or("none"),
 		num=sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string).unwrap_or("none".into()),
-		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(String::as_str).unwrap_or("none"),
+		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str).unwrap_or("none"),
 	).replace(" ", "-");
 	let out_file = format!("{dir}/{filename}", dir=dir, filename=out_filename);
 
@@ -336,6 +336,6 @@ fn mk_groupe(groupe: &Groupe, sous_groupe: Option<&SousGroupe>) -> String {
 	semaine=po(groupe.semaine.as_ref(), true),
 	activite=po(groupe.activite.as_ref(), true),
 	groupe_num=po(sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string), true),
-	profil=po(sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(String::as_str), true),
+	profil=po(sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str), true),
 	)
 }

@@ -117,9 +117,33 @@ fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
         g.activite = Some(cap.name("activite").unwrap().as_str().into());
         g.site = Some(cap.name("site").unwrap().as_str().into());
         g.semaine = Some(cap.name("semaine").unwrap().as_str().into());
-        let grage_min = cap.name("grage_min").unwrap().as_str();
-        let grage_max = cap.name("grage_max").unwrap().as_str();
-        g.category = Some(format!("{}-{} ans", grage_min, grage_max));
+        match (cap.name("grage_min"), cap.name("grage_max"), cap.name("crocus"), cap.name("balaous"), cap.name("basaltes")) {
+            (Some(mn), Some(mx), _, _, _) => { // tranche d'âge
+                let grage_min = mn.as_str().parse().unwrap();
+                let grage_max = mx.as_str().parse().unwrap();
+                g.age_min = Some(grage_min);
+                g.age_max = Some(grage_max);
+                g.category = Some(Groupe::guess_category(g.age_min, g.age_max));
+            },
+            (_, _, Some(_), _, _) => { // Crocus
+                g.age_min = Some(5);
+                g.age_max = Some(6);
+                g.category = Some("Crocus".into());
+            },
+            (_, _, _, Some(_), _) => { // Balaous
+                g.age_min = Some(7);
+                g.age_max = Some(8);
+                g.category = Some("Balaous".into());
+            },
+            (_, _, _, _, Some(_)) => { // Basaltes
+                g.age_min = Some(9);
+                g.age_max = Some(12);
+                g.category = Some("Basaltes".into());
+            },
+            _ => { // autre
+                g.category = Some(cap.name("category").unwrap().as_str().trim().into());
+            }
+        }
     }
     let grp_prog = into_string(ws.get_value(2, 0));
     if let Some(grp_prog) = grp_prog {
@@ -537,6 +561,20 @@ pub fn into_string(data: &DataType) -> O<String> {
             }
         }
         DataType::Bool(b) => Some(b.to_string()),
+        DataType::Error(_) => None,
+        DataType::Empty => None,
+    };
+    ret
+}
+pub fn into_int(data: &DataType) -> O<i64> {
+    let ret = match data {
+        DataType::Int(i) => Some(*i),
+        DataType::Float(f) => Some(*f as i64),
+        DataType::String(s) => match s.parse() {
+            Ok(n) => Some(n),
+            Err(_) => None,
+        },
+        DataType::Bool(b) => Some(i64::from(*b)),
         DataType::Error(_) => None,
         DataType::Empty => None,
     };
