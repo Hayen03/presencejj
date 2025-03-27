@@ -52,11 +52,8 @@ fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Resul
         Some(pos) => into_string(&ws[pos]),
         None => None,
     };
-    if let Some(grp_prog) = grp_prog {
-        if let Some(cap) = GROUPE_PROG_RE.captures(&grp_prog) {
-            g.saison = Some(cap.name("prog").unwrap().as_str().into());
-        }
-    }
+    g.saison = grp_prog;
+
     g.capacite = match config.capacite {
         Some(pos) => into_int(&ws[pos]).map(|n| n as usize),
         None => None,
@@ -65,14 +62,18 @@ fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Resul
     Ok(g)
 }
 
-pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg) {
+pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, err: &Term) {
     let mut config = ProgLnConfig::default();
     for (i, row) in ws.rows().enumerate() {
+        //let _ = out.write_line(&format!("Reading {:?}", into_string(ws.get_value(i, 2))));
         if i == 0 {
             config = ProgLnConfig::guess(row);
+            println!("{:?}", config.programmation)
         } else {
             match extract_group_info_from_prog(row, &config) {
                 Ok(mut grp) => {
+                    let _ = out.write_line(&format!("LECTURE {desc}", desc=grp.desc()));
+
                     let cap = grp.capacite;
 
                     // 1. Voir si le groupe existe déjà

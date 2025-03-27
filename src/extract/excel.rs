@@ -24,6 +24,8 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
         // 0. S'assurer qu'il n'y a pas eu d'erreur
         match g {
             Ok(mut grp) => {
+                let _ = out_term.write_line(&format!("LECTURE {desc}", desc=grp.desc()));
+
                 // 1. Voir si le groupe existe déjà. Chq. groupe devrait avoir une description unique
                 let existing_grp = groupes.groupes().filter(|g| g.equiv(&grp)).map(|g| g.id).collect::<Vec<GroupeID>>();
                 let gid = if existing_grp.is_empty() {
@@ -144,6 +146,10 @@ fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
                 g.category = Some(cap.name("category").unwrap().as_str().trim().into());
             }
         }
+    }
+    let (h, _) = ws.get_size();
+    if h < 6 {
+        return Err(ExtractError::InvalidFormat);
     }
     let grp_prog = into_string(ws.get_value(2, 0));
     if let Some(grp_prog) = grp_prog {
@@ -347,7 +353,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match CAM::from_str(&s) {
                 Ok(cam) => membre.fiche_sante.cam = Some(cam),
-                Err(_) => {let _ = err_term.write_line(&format!("Erreur en lisant le CAM: {}", s));},
+                Err(_e) => {let _ = err_term.write_line(&format!("Erreur en lisant le CAM: {} ({})", s, _e.to_string()));},
             }
         }
     }

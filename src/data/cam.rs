@@ -13,8 +13,9 @@ lazy_static! {
 			.unwrap();
 	pub static ref CAM_RE: Regex = Regex::new(
 		format!(
-			r"{}\s*?(:?\s|-)\s*(?P<exp>(?P<expan>[0-9]{{4}})\s*/\s*(?P<expm>[0-9]{{2}}))",
-			NAM_RE.as_str()
+			"{}{}",
+			NAM_RE.as_str(),
+			r"\s*-\s*(?P<exp>(?P<expan>[0-9]{4})(?:/|-)(?P<expm>[0-9]{2}))",
 		)
 		.as_str()
 	)

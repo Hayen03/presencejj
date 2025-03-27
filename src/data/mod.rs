@@ -46,6 +46,8 @@ impl FromStr for Genre {
     type Err = ParsingError;
 }
 
+static TAILLES: [Taille; 6] = [Taille::XS, Taille::S, Taille::M, Taille::L, Taille::XL, Taille::XXL];
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Taille {
     XS,
@@ -80,6 +82,11 @@ impl FromStr for Taille {
             _ => Err(ParsingError::from_msg("N'a pu lire la taille")),
         }
     }
+}
+impl Taille {
+	pub fn tailles() -> &'static[Self] {
+		&TAILLES
+	}
 }
 
 #[derive(Debug, Clone, Default, Hash)]

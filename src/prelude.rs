@@ -133,3 +133,18 @@ pub fn excel_col_to_num(col: &str) -> O<u32> {
 	}
 	Some(n)
 }
+
+pub fn read_int(msg: &str) -> i64 {
+	while {
+		let input: String = dialoguer::Input::new().with_prompt(msg).interact_text().expect("Erreur en lisant un nombre");
+		match input.parse() {
+			Ok(n) => {
+				return n;
+			},
+			Err(_) => {
+				true
+			},
+		}
+	} {}
+	0
+}

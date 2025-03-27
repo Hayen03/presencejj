@@ -6,11 +6,23 @@ use super::PrintError;
 use core::str;
 use std::{collections::HashSet, fmt::Display, fs::OpenOptions, io::Write, ops::BitAnd, process::Command};
 
-pub fn po<T: Display>(obj: Option<T>, brackets: bool) -> String {
-	if brackets {
-		obj.map_or("none".into(), |s| format!("[{}]", s).replace("#", r"\#").replace("@", r"\@"))
-	} else {
-		obj.map_or("none".into(), |s| format!("{}", s).replace("#", r"\#").replace("@", r"\@"))
+enum Delimiter {
+	Quotes,
+	Brackets,
+	Dollars,
+	Parentheses,
+	Braces,
+	None,
+}
+
+pub fn po<T: Display>(obj: Option<T>, delimiter: Delimiter) -> String {
+	match delimiter {
+		Delimiter::Quotes => obj.map_or("none".into(), |s| format!("\"{}\"", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("\"", "\\\""))),
+		Delimiter::Brackets => obj.map_or("none".into(), |s| format!("[{}]", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("$", r"\$"))),
+		Delimiter::Dollars => obj.map_or("none".into(), |s| format!("${}$", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("$", r"\$"))),
+		Delimiter::Parentheses => obj.map_or("none".into(), |s| format!("({})", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
+		Delimiter::Braces => obj.map_or("none".into(), |s| format!("{{{}}}", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
+		Delimiter::None => obj.map_or("none".into(), |s| format!("{}", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
 	}
 }
 
@@ -175,9 +187,9 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 #let semaine = {semaine}
 #let groupes = (
 ",
-		site = po(info.site, true),
-		saison = po(info.saison, true),
-		semaine = po(info.semaine, true),
+		site = po(info.site, Delimiter::Brackets),
+		saison = po(info.saison, Delimiter::Brackets),
+		semaine = po(info.semaine, Delimiter::Brackets),
 	);
 	
 	let mut participants = HashSet::new();
@@ -193,10 +205,10 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 			let _ = write!(file, 
 "\"{mid}\": new_groupe(categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, profil: {profil}),\n",
 				mid=p,
-				categorie=po(cat, true),
-				discriminant=po(disc, true),
-				animateur=po(anim, true),
-				profil=po(profil, true),
+				categorie=po(cat, Delimiter::Brackets),
+				discriminant=po(disc, Delimiter::Brackets),
+				animateur=po(anim, Delimiter::Brackets),
+				profil=po(profil, Delimiter::Brackets),
 			);
 		}
 	}
@@ -269,10 +281,10 @@ fn mk_membre(membre: &Membre, compte: &Compte) -> String {
 			mid=membre.id,
 			nom=membre.nom,
 			prenom=membre.prenom,
-			nam=po(membre.fiche_sante.cam.as_ref().map(CAM::numero), true),
-			exp_mois=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:02}", s.exp_mois())), true),
-			exp_year=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:04}", s.exp_an())), true),
-			genre=po(membre.genre, true),
+			nam=po(membre.fiche_sante.cam.as_ref().map(CAM::numero), Delimiter::Brackets),
+			exp_mois=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:02}", s.exp_mois())), Delimiter::Brackets),
+			exp_year=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:04}", s.exp_an())), Delimiter::Brackets),
+			genre=po(membre.genre, Delimiter::Brackets),
 			allergies = match membre.fiche_sante.allergies.len() {
 				0 => String::new(),
 				1 => format!("[{}],", membre.fiche_sante.allergies[0]),
@@ -285,57 +297,57 @@ fn mk_membre(membre: &Membre, compte: &Compte) -> String {
 			},
 			prob_comportement = match &membre.fiche_sante.probleme_comportement {
 				None => "none".into(),
-				Some(bj) => format!("bool_just(val: {val}, just: {just})", val=bj.reponse, just=po(bj.justification.as_ref(), true)),
+				Some(bj) => format!("bool_just(val: {val}, just: {just})", val=bj.reponse, just=po(bj.justification.as_ref(), Delimiter::Brackets)),
 			},
 			mandataire=compte.mandataire,
-			tel=po(compte.tel, true),
-			adresse=po(compte.adresse.as_ref().map(|adr| adr.full()), true),
-			email=po(compte.email.as_ref(), false),
+			tel=po(compte.tel, Delimiter::Brackets),
+			adresse=po(compte.adresse.as_ref().map(|adr| adr.full()), Delimiter::Brackets),
+			email=po(compte.email.as_ref(), Delimiter::None),
 			prise_med=match &membre.fiche_sante.prise_med {
 				None => "none".into(),
-				Some(bj) => format!("bool_just(val: {val}, just: {just})", val=bj.reponse, just=po(bj.justification.as_ref(), true)),
+				Some(bj) => format!("bool_just(val: {val}, just: {just})", val=bj.reponse, just=po(bj.justification.as_ref(), Delimiter::Brackets)),
 			},
-			auth_soins=po(membre.fiche_sante.auth_soins, false),
-			med_anti_infl=po(membre.fiche_sante.auth_medicaments.anti_inflamatoire, false),
-			med_sirop=po(membre.fiche_sante.auth_medicaments.sirop_toux, false),
-			med_ibu=po(membre.fiche_sante.auth_medicaments.ibuprofene, false),
-			med_antieme=po(membre.fiche_sante.auth_medicaments.anti_emetique, false),
-			med_antibio=po(membre.fiche_sante.auth_medicaments.anti_biotique, false),
-			med_acet=po(membre.fiche_sante.auth_medicaments.acetaminophene, false),
+			auth_soins=po(membre.fiche_sante.auth_soins, Delimiter::None),
+			med_anti_infl=po(membre.fiche_sante.auth_medicaments.anti_inflamatoire, Delimiter::None),
+			med_sirop=po(membre.fiche_sante.auth_medicaments.sirop_toux, Delimiter::None),
+			med_ibu=po(membre.fiche_sante.auth_medicaments.ibuprofene, Delimiter::None),
+			med_antieme=po(membre.fiche_sante.auth_medicaments.anti_emetique, Delimiter::None),
+			med_antibio=po(membre.fiche_sante.auth_medicaments.anti_biotique, Delimiter::None),
+			med_acet=po(membre.fiche_sante.auth_medicaments.acetaminophene, Delimiter::None),
 			contact_1=match &membre.contacts[0] {
 				None => "none".into(),
-				Some(c) => format!("new_contact(nom: [{nom}], tel: {tel}, lien: {lien})", nom=c.nom, tel=po(c.tel, true), lien=po(c.lien.as_ref(), true),),
+				Some(c) => format!("new_contact(nom: [{nom}], tel: {tel}, lien: {lien})", nom=c.nom, tel=po(c.tel, Delimiter::Brackets), lien=po(c.lien.as_ref(), Delimiter::Brackets),),
 			},
 			contact_2=match &membre.contacts[1] {
 				None => "none".into(),
-				Some(c) => format!("new_contact(nom: [{nom}], tel: {tel}, lien: {lien})", nom=c.nom, tel=po(c.tel, true), lien=po(c.lien.as_ref(), true)),
+				Some(c) => format!("new_contact(nom: [{nom}], tel: {tel}, lien: {lien})", nom=c.nom, tel=po(c.tel, Delimiter::Brackets), lien=po(c.lien.as_ref(), Delimiter::Brackets)),
 			},
 			quitte = match membre.quitte.avec.len() {
 				0 => String::new(),
 				1 => format!("[{}],", membre.quitte.avec[0]),
 				_ => membre.quitte.avec.iter().map(|s| format!("[{}]", s)).collect::<Vec<String>>().join(", ")
 			},
-			mdp=po(membre.quitte.mdp.as_ref(), true),
-			auth_partage=po(membre.piscine.partage, false),
-			vfi=po(membre.piscine.vfi, false),
-			tse=po(membre.piscine.tete_sous_eau, false),
-			auth_photo=po(membre.auth_photo, false),
-			comment=po(membre.commentaire.as_ref(), true),
+			mdp=po(membre.quitte.mdp.as_ref(), Delimiter::Brackets),
+			auth_partage=po(membre.piscine.partage, Delimiter::None),
+			vfi=po(membre.piscine.vfi, Delimiter::None),
+			tse=po(membre.piscine.tete_sous_eau, Delimiter::None),
+			auth_photo=po(membre.auth_photo, Delimiter::None),
+			comment=po(membre.commentaire.as_ref(), Delimiter::Brackets),
 			naissance=format!("{an:04}/{mois:02}/{jour:02}", an=membre.naissance.year(), mois=membre.naissance.month0()+1, jour=membre.naissance.day0()+1),
-			age=po(Local::now().date_naive().years_since(membre.naissance), true),
+			age=po(Local::now().date_naive().years_since(membre.naissance), Delimiter::Brackets),
 		)
 }
 
 fn mk_groupe(groupe: &Groupe, sous_groupe: Option<&SousGroupe>) -> String {
 	format!("new_groupe(saison: {saison}, site: {site}, categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, semaine: {semaine}, activite: {activite}, profil: {profil}, groupe_num: {groupe_num})",
-	saison=po(groupe.saison.as_ref(), true),
-	site=po(groupe.site.as_ref(), true),
-	categorie=po(groupe.category.as_ref().map(String::as_str), true),
-	discriminant=po(groupe.discriminant.as_ref(), true),
-	animateur=po(sous_groupe.map(|sg| sg.animateur.as_ref()).unwrap_or(None).map(String::as_str), true),
-	semaine=po(groupe.semaine.as_ref(), true),
-	activite=po(groupe.activite.as_ref(), true),
-	groupe_num=po(sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string), true),
-	profil=po(sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str), true),
+	saison=po(groupe.saison.as_ref(), Delimiter::Brackets),
+	site=po(groupe.site.as_ref(), Delimiter::Brackets),
+	categorie=po(groupe.category.as_ref().map(String::as_str), Delimiter::Brackets),
+	discriminant=po(groupe.discriminant.as_ref(), Delimiter::Brackets),
+	animateur=po(sous_groupe.map(|sg| sg.animateur.as_ref()).unwrap_or(None).map(String::as_str), Delimiter::Brackets),
+	semaine=po(groupe.semaine.as_ref(), Delimiter::Brackets),
+	activite=po(groupe.activite.as_ref(), Delimiter::Brackets),
+	groupe_num=po(sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string), Delimiter::Brackets),
+	profil=po(sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str), Delimiter::Brackets),
 	)
 }
