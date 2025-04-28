@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
+use std::{cmp::min, collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use lazy_static::lazy_static;
 use strum::IntoEnumIterator;
@@ -80,14 +80,55 @@ impl Groupe {
         hasher.finish() as u32
     }
 
-    pub fn mk_sous_groupes(&mut self) {
-        self.sous_groupe.clear();
-        let sg = SousGroupe {
-            participants: self.participants.clone(),
-            ..SousGroupe::default()
-        };
-        self.sous_groupe.push(sg);
-        // TODO: faire les vrais sous-groupes
+    pub fn mk_sous_groupes(&mut self, nb_sg: usize, membres: &MembreReg) -> Result<(), ()> {
+        let old_sg = self.sous_groupe.clone();
+        self.sous_groupe = Vec::new();
+        if nb_sg == 0 { return Ok(()); }
+
+        // Faire la liste des candidats
+        let mut candidats = Vec::new();
+        for mbr in self.participants.iter() {
+            match membres.get(*mbr) {
+                Ok(mbr) => {
+                    candidats.push(mbr);
+                },
+                Err(_e) => { // membre inexistant
+                    self.sous_groupe = old_sg;
+                    return Err(())
+                }, 
+            }
+        }
+
+        // nombre de participants par sous_groupe
+        let sg_size = ((candidats.len() as f32)/(nb_sg as f32)).ceil() as usize;
+
+        println!("Forme {} sous-groupe de {} pour {}", nb_sg, sg_size, self.short_desc());
+
+        // création des sous groupes
+        for disc in 1..=nb_sg {
+            let mut sg = mk_sous_groupe(&candidats, sg_size);
+            sg.groupe = self.id;
+            sg.disc = disc as u32;
+            // retirer des candidats les membres ajoutés au sg
+            candidats = candidats.into_iter().filter(|mbr| !sg.contains(*mbr)).collect();
+
+            self.sous_groupe.push(sg);
+        }
+
+        // Ajouter au sg les candidats restants
+        for sg in self.sous_groupe.iter_mut() {
+            while sg.participants.len() < sg_size && candidats.len() > 0 {
+                sg.participants.insert(candidats.pop().unwrap().id);
+            }
+        }
+
+        // S'il reste encore des candidats après ça, on envoie une erreur...
+        if candidats.len() > 0 {
+            self.sous_groupe = old_sg;
+            return Err(());
+        }
+
+        Ok(())
     }
 
     pub fn desc(&self) -> String {
@@ -100,6 +141,29 @@ impl Groupe {
             print_option(&self.discriminant),
             //print_option(&self.animateur),
         )
+    }
+
+    pub fn short_desc(&self) -> String {
+        let l = [
+            self.saison.as_ref().map(String::from),
+            self.activite.as_ref().map(String::from),
+            self.site.as_ref().map(String::from),
+            self.category.as_ref().map(String::from),
+            self.discriminant.as_ref().map(|s| format!("Sem. {}", s)),
+        ];
+        let s: String = l.into_iter().filter(Option::is_some).map(Option::unwrap).collect::<Vec<String>>().join(" | ");
+        if let Some(disc) = &self.discriminant {
+            s + &format!(" - {disc}")
+        } else {
+            s
+        }
+    }
+
+    pub fn estime_cap(&self) -> usize {
+        match &self.capacite {
+            None => self.participants.len(),
+            Some(c) => *c,
+        }
     }
 
     pub fn get_sdj_info<'a>(&'a self) -> PresenceSDJInfo<'a> {
@@ -120,6 +184,15 @@ impl Groupe {
             (None, Some(mx)) => format!("<{} ans", mx),
             (None, None) => "Tous âge".into(),
         }
+    }
+
+    pub fn get_sous_groupe_for(&self, mid: MembreID) -> Option<&SousGroupe> {
+        for sg in self.sous_groupe.iter() {
+            if sg.participants.contains(&mid) {
+                return Some(sg)
+            }
+        }
+        None
     }
 }
 
@@ -198,7 +271,7 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
         let mut pro = None;
         for it in Interet::iter() {
             if let Some(p) = percent.get(&it) {
-                if *p > 0.5 {
+                if *p > 0.4 {
                     pro = Some(it);
                     break
                 }
@@ -214,7 +287,7 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
         None => {
             let mut parts = Vec::from(membres);
             parts.sort_by(|a, b| a.naissance.cmp(&b.naissance));
-            for i in 0..nb_participants {
+            for i in 0..min(nb_participants, parts.len()) {
                 part.insert(parts[i].id);
             }
         },
@@ -282,4 +355,10 @@ pub struct SousGroupe {
     pub participants: HashSet<MembreID>,
     pub groupe: GroupeID,
     pub animateur: O<String>,
+}
+
+impl SousGroupe {
+    fn contains(&self, mbr: &Membre) -> bool {
+        self.participants.iter().any(|mid| mbr.id == *mid)
+    }
 }

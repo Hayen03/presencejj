@@ -1,12 +1,13 @@
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
 
-use std::{collections::HashSet, io::Write};
+use std::{collections::{HashMap, HashSet}, io::Write};
 
 use config::Config;
 use console::{style, Term};
 use extract::excel::fill_regs;
-use groupes::{comptes::{CompteReg, NULL_COMPTE}, groupes::{GroupeReg, NULL_GROUPE}, membres::{MembreReg, NULL_MEMBRE}};
+use groupes::{comptes::{CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}};
 use office::Excel;
+use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
 
 pub mod data;
@@ -121,7 +122,7 @@ fn main() {
                 wait_to_continue()
             },
             ProgramActions::FaireSousGroupes => {
-                let _res = program.out.write_line("Création des sous-groupes... (Pas encore implémenté)");
+                let _res = build_sous_groupes(&mut program);
                 wait_to_continue()
             },
             ProgramActions::ImprimerStats => {
@@ -158,16 +159,54 @@ fn charger_from_list_presence(program: &mut ProgramData) -> Result<(), ()> {
 }
 
 fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
-    for membre in program.membres.membres() {
-        let compte = program.comptes.get(membre.compte.unwrap_or_default()).unwrap_or(&NULL_COMPTE);
-        print_fiche_med(membre, compte, &program.config, "test", true).unwrap();
+
+    // identifie quel enfant est sur quel site
+    let mut site_mbrs: HashMap<&str, HashSet<MembreID>> = HashMap::new();
+    for grp in program.groupes.groupes() {
+        let set = {
+            let site = grp.site.as_ref().map(String::as_str).unwrap_or("None");
+            if !site_mbrs.contains_key(site) {
+                site_mbrs.insert(site, HashSet::new());
+            }
+            site_mbrs.get_mut(site).unwrap()
+        };
+        for part in grp.participants.iter() {
+            set.insert(*part);
+        }
+    }
+
+    // imprime les fiches med par site
+    for (site, parts) in site_mbrs {
+        for mid in parts {
+            if let Ok(membre) = program.membres.get(mid) {
+                let compte = program.comptes.get(membre.compte.unwrap_or_default()).unwrap_or(&NULL_COMPTE);
+                let _res = print_fiche_med(membre, compte, &program.config, site, true);
+                match _res {
+                    Ok(_) => {
+                        let _ = program.out.write_line(&format!("{}", style(format!("Impression de la fiche santé de [{} {}]", &membre.prenom, &membre.nom)).cyan()));
+                    },
+                    Err(_e) => {
+                        let _ = program.err.write_line(&format!("{}", style(format!("Échec lors de l'impression de la fiche santé de [{} {}]", &membre.prenom, &membre.nom)).red()));
+                    },
+                }
+            } else {
+                let _ = program.err.write_line(&format!("{}", style(format!("Membre {mid} inexistant")).red()));
+            }
+        }
     }
     Ok(())
 }
 
 fn print_presences_anim(program: &ProgramData) -> Result<(), ()> {
     for grp in program.groupes.groupes() {
-        let _ = print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config);
+        if grp.sous_groupe.len() == 0 {
+            let _ = print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config);
+        } else {
+            for sg in &grp.sous_groupe {
+                let _ = print_presence_anim(grp, Some(sg), &program.membres, &program.comptes, &program.config);
+            }
+        }
+        
     }
     Ok(())
 }
@@ -252,6 +291,50 @@ fn afficher_donnees(program: &ProgramData) -> Result<(), ()> {
     } {}
 
     Ok(())
+}
+
+fn build_sous_groupes(program: &mut ProgramData) -> Result<(), ()> {
+    for grp in program.groupes.groupes_mut() {
+        if *grp == *NULL_GROUPE { continue; } // skip le groupe null
+        let nb_sg = guess_nb_sous_groupes(grp);
+        if let Some(nb_sg) = nb_sg {
+            match grp.mk_sous_groupes(nb_sg, &program.membres) {
+                Ok(_) => {
+                    let _ = program.out.write_line(&format!("{}", style(format!("Création de {nb_sg} sous-groupes pour [{}]", grp.short_desc())).cyan()));
+                },
+                Err(_) => {
+                    let _ = program.err.write_line(&format!("{}", style(format!("Échec lors de la création de {nb_sg} sous-groupes pour [{}]", grp.short_desc())).red()));
+                },
+            }
+        }
+    }
+    Ok(())
+}
+
+fn guess_nb_sous_groupes(grp: &Groupe) -> Option<usize> {
+    let cat = grp.category.as_ref().map(|s| s.to_lowercase());
+    match (cat.as_ref().map(String::as_str), grp.estime_cap()) {
+        (_, 0) => None,
+        (Some("crocus"), i) => { // crocus -> 10 par groupes
+            Some((i as f32/10.0).ceil() as usize)
+        },
+        (Some("balaous"), i) => { // balaous -> 12 par groupes
+            Some((i as f32/12.0).ceil() as usize)
+        },
+        (Some("basaltes"), i) => { // basaltes -> 15 par groupes
+            Some((i as f32/15.0).ceil() as usize)
+        },
+        (_, _) => { // inconnu, on doit demander
+            let mut s1 = format!("Combien de sous groupe pour le groupe [{}]? ", grp.short_desc());
+            let mut s2 = if let Some(cap) = &grp.capacite {
+                format!("(capacité de {cap}): ")
+            } else {
+                String::new()
+            };
+            let msg = (s1 + &s2);
+            read_int_option(&msg).map(|n| n as usize)
+        },
+    }
 }
 
 fn estimation_chandail(program: &ProgramData) -> Result<(), ()> {

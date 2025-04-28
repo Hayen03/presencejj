@@ -148,3 +148,29 @@ pub fn read_int(msg: &str) -> i64 {
 	} {}
 	0
 }
+pub fn read_int_option(msg: &str) -> Option<i64> {
+	while {
+		let input: String = dialoguer::Input::new().with_prompt(msg).allow_empty(true).interact_text().expect("Erreur en lisant un nombre");
+		if input == "" {
+			return None;
+		}
+		match input.parse() {
+			Ok(n) => {
+				return Some(n);
+			},
+			Err(_) => {
+				true
+			},
+		}
+	} {}
+	None
+}
+
+pub fn read_string_option(msg: &str) -> Option<String> {
+	let input: String = dialoguer::Input::new().with_prompt(msg).allow_empty(true).interact_text().expect("Erreur en lisant un nombre");
+	if input == "" {
+		return None;
+	} else {
+		return Some(input);
+	}
+}
