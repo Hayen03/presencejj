@@ -68,7 +68,8 @@ impl Groupe {
         self.category == other.category &&
         self.discriminant == other.discriminant &&
         self.semaine == other.semaine &&
-        self.activite == other.activite
+        self.activite == other.activite &&
+        self.site == other.site
     }
     pub fn get_id_seed(&self) -> u32 {
         let mut hasher = DefaultHasher::new();
@@ -123,7 +124,7 @@ impl Groupe {
         }
 
         // S'il reste encore des candidats après ça, on envoie une erreur...
-        if candidats.len() > 0 {
+        if !candidats.is_empty() {
             self.sous_groupe = old_sg;
             return Err(());
         }
@@ -151,7 +152,7 @@ impl Groupe {
             self.category.as_ref().map(String::from),
             self.discriminant.as_ref().map(|s| format!("Sem. {}", s)),
         ];
-        let s: String = l.into_iter().filter(Option::is_some).map(Option::unwrap).collect::<Vec<String>>().join(" | ");
+        let s: String = l.into_iter().flatten().collect::<Vec<String>>().join(" | ");
         if let Some(disc) = &self.discriminant {
             s + &format!(" - {disc}")
         } else {
@@ -168,9 +169,9 @@ impl Groupe {
 
     pub fn get_sdj_info<'a>(&'a self) -> PresenceSDJInfo<'a> {
         PresenceSDJInfo{
-            saison: self.saison.as_ref().map(String::as_str),
-            site: self.site.as_ref().map(String::as_str),
-            semaine: self.semaine.as_ref().map(String::as_str),
+            saison: self.saison.as_deref(),
+            site: self.site.as_deref(),
+            semaine: self.semaine.as_deref(),
         }
     }
 
@@ -219,11 +220,10 @@ impl GroupeReg {
         self.reg.contains_key(&gid)
     }
     pub fn add(&mut self, groupe: Groupe) -> Result<(), RegError<GroupeID>> {
-        if self.reg.contains_key(&groupe.id) {Err(RegError::KeyAlreadyInReg(groupe.id))}
-        else {
-            self.reg.insert(groupe.id, groupe);
+        if let std::collections::hash_map::Entry::Vacant(e) = self.reg.entry(groupe.id) {
+            e.insert(groupe);
             Ok(())
-        }
+        } else {Err(RegError::KeyAlreadyInReg(groupe.id))}
     }
     pub fn remove(&mut self, gid: GroupeID) -> Result<Groupe, RegError<GroupeID>> {
         match self.reg.remove(&gid) {
@@ -243,11 +243,23 @@ impl GroupeReg {
             Option::Some(m) => Ok(m),
         }
     }
-    pub fn groupes<'a>(&'a self) -> GroupeIter<'a, impl Iterator<Item=&'a Groupe>> {
+    pub fn groupes(&self) -> GroupeIter<'_, impl Iterator<Item=&'_ Groupe>> {
         GroupeIter(self.reg.values())
     }
-    pub fn groupes_mut<'a>(&'a mut self) -> GroupeIterMut<'a, impl Iterator<Item=&'a mut Groupe>> {
+    pub fn groupes_mut(&mut self) -> GroupeIterMut<'_, impl Iterator<Item=&'_ mut Groupe>> {
         GroupeIterMut(self.reg.values_mut())
+    }
+    pub fn len(&self) -> usize {
+        self.reg.len()
+    }
+}
+
+pub fn rank_points(rank: usize) -> u32 {
+    match rank {
+        x if x < 1 => 8,
+        1 => 4,
+        2 => 2,
+        _ => 0,
     }
 }
 
@@ -257,9 +269,9 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
     let profil ={
         let mut pts: HashMap<Interet, u32> = HashMap::new();
         for mbr in membres {
-            for interet in mbr.interets.iter() {
+            for (rank, interet) in mbr.interets.iter().enumerate() {
                 if let Some(it) = interet {
-                    *pts.entry(*it).or_insert(0) += 1;
+                    *pts.entry(*it).or_insert(0) += rank_points(rank);
                 }
             }
         }

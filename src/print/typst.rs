@@ -6,7 +6,7 @@ use super::PrintError;
 use core::str;
 use std::{collections::HashSet, fmt::Display, fs::OpenOptions, io::Write, ops::BitAnd, process::Command};
 
-enum Delimiter {
+pub enum Delimiter {
 	Quotes,
 	Brackets,
 	Dollars,
@@ -22,7 +22,7 @@ pub fn po<T: Display>(obj: Option<T>, delimiter: Delimiter) -> String {
 		Delimiter::Dollars => obj.map_or("none".into(), |s| format!("${}$", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("$", r"\$"))),
 		Delimiter::Parentheses => obj.map_or("none".into(), |s| format!("({})", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
 		Delimiter::Braces => obj.map_or("none".into(), |s| format!("{{{}}}", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
-		Delimiter::None => obj.map_or("none".into(), |s| format!("{}", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
+		Delimiter::None => obj.map_or("none".into(), |s| s.to_string().replace("#", r"\#").replace("@", r"\@").to_string()),
 	}
 }
 
@@ -71,19 +71,20 @@ pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: 
 }
 
 pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, membres: &MembreReg, comptes: &CompteReg, config: &Config) -> Result<(), PrintError> {
+	print!("Attempting {} => ", groupe.short_desc());
 	// calcul le nom du fichier de sortie
 	let dir = format!("{out}/{saison}/{site}/anim/sem{semaine}", 
 		out=config.out_dir, 
-		site=groupe.site.as_ref().map(String::as_str).unwrap_or("none"), 
-		saison=groupe.saison.as_ref().map(String::as_str).unwrap_or("none"),
-		semaine=groupe.semaine.as_ref().map(String::as_str).unwrap_or("none"),
+		site=groupe.site.as_deref().unwrap_or("none"), 
+		saison=groupe.saison.as_deref().unwrap_or("none"),
+		semaine=groupe.semaine.as_deref().unwrap_or("none"),
 	).replace(" ", "-");
 	let out_filename = format!("presence_anim_{activite}_{site}_{categorie}_{discriminant}{num}_{profil}_sem{semaine}.pdf", 
-		site=groupe.site.as_ref().map(String::as_str).unwrap_or("none"),
-		categorie=groupe.category.as_ref().map(String::as_str).unwrap_or("none"),
-		discriminant=groupe.discriminant.as_ref().map(String::as_str).unwrap_or("none"),
-		semaine=groupe.semaine.as_ref().map(String::as_str).unwrap_or("none"),
-		activite=groupe.activite.as_ref().map(String::as_str).unwrap_or("none"),
+		site=groupe.site.as_deref().unwrap_or("none"),
+		categorie=groupe.category.as_deref().unwrap_or("none"),
+		discriminant=groupe.discriminant.as_deref().unwrap_or("none"),
+		semaine=groupe.semaine.as_deref().unwrap_or("none"),
+		activite=groupe.activite.as_deref().unwrap_or("none"),
 		num=sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string).unwrap_or("none".into()),
 		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str).unwrap_or("none"),
 	).replace(" ", "-");
@@ -96,7 +97,10 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 	let tmp_file_dir = format!("{}/templates", config.working_dir);
 	let _ = std::fs::create_dir_all(&tmp_file_dir);
 	let tmp_file_path = format!("{}/tmp.typ", tmp_file_dir);
-	let mut file = OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path).expect("Could not open temporary file");
+	let mut file = match OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path) {
+		Ok(f) => f,
+		Err(_e) => return Err(PrintError::TempFileError), // TODO better error handling
+	};
 
 	let _ = write!(file, 
 "#import \"template.typ\": *
@@ -111,9 +115,7 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 	for membre in ps.iter() {
 		//let membre = membres.get(*participant).expect("Participant non existant");
 		let compte = membre.compte.map(|c| comptes.get(c).expect("Compte non existant")).unwrap_or(&NULL_COMPTE);
-		let _ = write!(file, 
-"{mbr},
-", mbr=mk_membre(membre, compte));
+		let _ = writeln!(file, "{mbr},", mbr=mk_membre(membre, compte));
 	}
 	let _ = write!(file, 
 ")
@@ -132,7 +134,7 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 			.output()
 			.expect("failed to execute process");
 	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
-	if err.len() > 0 {
+	if !err.is_empty() {
 		println!("{}", err);
 	}
 

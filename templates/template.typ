@@ -270,7 +270,7 @@
 	#let cells = ()
 	// remplir les cellules des enfants
 	#for (num, enf) in participants.enumerate() {
-		cells = cells + mk_presence_anim_row(num: num, enfant: enf)
+		cells = cells + mk_presence_anim_row(num: num+1, enfant: enf)
 	}
 
 	#table(columns: (auto, 1fr, auto, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size, check_cell_size),

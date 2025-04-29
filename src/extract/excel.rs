@@ -36,6 +36,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                     id
                 } else {
                     // 1.2 Si oui, prendre le premier groupe (devrait être le seul)
+                    let _ = out_term.write_line("Groupe déjà existant!!");
                     existing_grp[0]
                 };
                 let grp = groupes.get_mut(gid).unwrap();

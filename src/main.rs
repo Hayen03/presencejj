@@ -62,7 +62,11 @@ enum EstimationChandailMode {
 fn main() {
     let out_term = console::Term::stdout();
     let err_term = console::Term::buffered_stderr();
-    let config = Config::default();
+    let config = Config{
+        working_dir: std::env::current_dir().unwrap().to_str().unwrap().into(),
+        ..Config::default()
+    };
+    
 
     let mut groupe_reg = GroupeReg::default();
     let mut compte_reg = CompteReg::default();
@@ -83,6 +87,7 @@ fn main() {
 
     while {
         let _ = program.out.clear_screen();
+        //println!("{:?}", std::env::current_dir());
         let action = choose_option(&program.out, &[
             ("Lire à partir de la programmation.", ProgramActions::ChargerDeProg),
             ("Lire à partir des listes de présences.", ProgramActions::ChargerDePresence),
@@ -164,7 +169,7 @@ fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
     let mut site_mbrs: HashMap<&str, HashSet<MembreID>> = HashMap::new();
     for grp in program.groupes.groupes() {
         let set = {
-            let site = grp.site.as_ref().map(String::as_str).unwrap_or("None");
+            let site = grp.site.as_deref().unwrap_or("None");
             if !site_mbrs.contains_key(site) {
                 site_mbrs.insert(site, HashSet::new());
             }
@@ -198,16 +203,20 @@ fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
 }
 
 fn print_presences_anim(program: &ProgramData) -> Result<(), ()> {
+    let mut compte = 0;
     for grp in program.groupes.groupes() {
-        if grp.sous_groupe.len() == 0 {
-            let _ = print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config);
+        compte += 1;
+        if grp == &(*NULL_GROUPE) {continue;}
+        if grp.sous_groupe.is_empty() {
+            print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config).expect("Oups");
         } else {
             for sg in &grp.sous_groupe {
-                let _ = print_presence_anim(grp, Some(sg), &program.membres, &program.comptes, &program.config);
+                print_presence_anim(grp, Some(sg), &program.membres, &program.comptes, &program.config).expect("AAAAAAh");
             }
         }
         
     }
+    let _ = program.out.write_line(&format!("À imprimé {}/{} groupes", compte, program.groupes.len()));
     Ok(())
 }
 
@@ -215,7 +224,7 @@ fn print_presences_sdj(program: &ProgramData) -> Result<(), ()> {
     // Trouver toutes les combinaisons de (saison, site, semaine)
     let mut grp_info = HashSet::new();
     for grp in program.groupes.groupes() {
-        if *grp == *NULL_GROUPE {
+        if grp == &(*NULL_GROUPE) {
             continue
         }
         let gi = grp.get_sdj_info();
@@ -263,7 +272,10 @@ fn afficher_donnees(program: &ProgramData) -> Result<(), ()> {
         let _ = program.out.clear_screen();
         match action {
             AfficherActions::Groupes => {
+                let mut compte = 0;
                 for groupe in program.groupes.groupes() {
+                    compte += 1;
+                    if groupe == &(*NULL_GROUPE) {continue;}
                     let _ = program.out.write_line(&format!("{id}: {desc} --- inscriptions: {insc}/{cap}",
                         id=groupe.id,
                         desc=groupe.desc(),
@@ -274,6 +286,7 @@ fn afficher_donnees(program: &ProgramData) -> Result<(), ()> {
                         },
                     ));
                 }
+                println!("{}", compte);
                 wait_to_continue()
             },
             AfficherActions::Membres => {
@@ -313,7 +326,7 @@ fn build_sous_groupes(program: &mut ProgramData) -> Result<(), ()> {
 
 fn guess_nb_sous_groupes(grp: &Groupe) -> Option<usize> {
     let cat = grp.category.as_ref().map(|s| s.to_lowercase());
-    match (cat.as_ref().map(String::as_str), grp.estime_cap()) {
+    match (cat.as_deref(), grp.estime_cap()) {
         (_, 0) => None,
         (Some("crocus"), i) => { // crocus -> 10 par groupes
             Some((i as f32/10.0).ceil() as usize)
@@ -422,7 +435,7 @@ fn read_file_path(msg: &str) -> String {
         filepath = filepath.as_str()[1..filepath.len()-1].into();
     }
     println!("Tentative: {}", filepath);
-    return filepath;
+    filepath
 }
 
 fn print_banner(term: &Term) {
