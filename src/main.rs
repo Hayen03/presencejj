@@ -1,6 +1,6 @@
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
 
-use std::{collections::{HashMap, HashSet}, io::Write};
+use std::{collections::{HashMap, HashSet}, io::Write, sync::RwLock};
 
 use config::Config;
 use console::{style, Term};
@@ -9,6 +9,8 @@ use groupes::{comptes::{CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, NU
 use office::Excel;
 use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
+
+use crate::groupes::membres;
 
 pub mod data;
 pub mod extract;
@@ -26,6 +28,34 @@ struct ProgramData {
     pub groupes: GroupeReg,
     pub comptes: CompteReg,
     pub membres: MembreReg,
+    old_out_dir: RwLock<String>,
+}
+impl ProgramData {
+    pub fn new(out: Term, err: Term, config: Config, groupes: GroupeReg, comptes: CompteReg, membres: MembreReg) -> Self {
+        ProgramData {
+            out,
+            err,
+            config,
+            groupes,
+            comptes,
+            membres,
+            old_out_dir: RwLock::new("/".into()),
+        }
+    }
+    pub fn get_out_dir(&self, title: &str) -> Option<String> {
+        let mut old_dir = self.old_out_dir.write().unwrap();
+        let new_dir = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_str())
+            .pick_folder();
+        new_dir.as_ref()?;
+        let new_dir = new_dir.unwrap();
+        let path = new_dir.to_str().unwrap().to_string();
+        let dir = new_dir.parent().map(|p| p.to_str().unwrap().to_string()).unwrap_or("/".into());
+        //println!("{}", dir);
+        *old_dir = dir;
+        Some(path)
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -62,11 +92,16 @@ enum EstimationChandailMode {
 fn main() {
     let out_term = console::Term::stdout();
     let err_term = console::Term::buffered_stderr();
-    let config = Config{
+    let mut config = Config{
         working_dir: std::env::current_dir().unwrap().to_str().unwrap().into(),
         ..Config::default()
     };
     
+    // get typst working dir from args
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        config.typst_working_dir = args[1].clone();
+    }
 
     let mut groupe_reg = GroupeReg::default();
     let mut compte_reg = CompteReg::default();
@@ -76,14 +111,7 @@ fn main() {
     let _ = compte_reg.add(NULL_COMPTE.clone());
     let _ = membre_reg.add(NULL_MEMBRE.clone());
 
-    let mut program = ProgramData {
-        out: out_term,
-        err: err_term,
-        config,
-        groupes: groupe_reg,
-        comptes: compte_reg,
-        membres: membre_reg,
-    };
+    let mut program = ProgramData::new(out_term, err_term, config, groupe_reg, compte_reg, membre_reg);
 
     while {
         let _ = program.out.clear_screen();
@@ -114,9 +142,16 @@ fn main() {
                 wait_to_continue()
             },
             ProgramActions::ImprimerListesPresence => {
-                let _res = print_presences_anim(&program);
-                let _res = print_presences_sdj(&program);
-                wait_to_continue()
+                // Obtenir le dossier de sortie
+                let out_dir = program.get_out_dir("Sélectionnez le dossier de sortie");
+                if out_dir.is_none() {
+                    let _ = program.err.write_line("Aucun dossier de sortie sélectionné.");
+                    true
+                } else {
+                    let _res = print_presences_anim(&program, out_dir.as_deref());
+                    let _res = print_presences_sdj(&program, out_dir.as_deref());
+                    wait_to_continue()
+                }
             },
             ProgramActions::ImprimerFichesSante => {
                 let _res = print_fiche_santes(&program);
@@ -151,7 +186,17 @@ fn main() {
 }
 
 fn charger_from_list_presence(program: &mut ProgramData) -> Result<(), ()> {
-    let filepath: String = read_file_path("Fichier xlsx: ");
+    let filepath = rfd::FileDialog::new()
+        .set_title("Sélectionner le fichier de présence")
+        .add_filter("excel", &["xlsx"])
+        .set_directory("/")
+        .pick_file();
+    if filepath.is_none() {
+        let _ = program.err.write_line("Aucun fichier sélectionné.");
+        return Err(());
+    }
+    let filepath = filepath.unwrap().to_str().unwrap().to_string();
+    //let filepath: String = read_file_path("Fichier xlsx: ");
 
     let res = fill_regs(&mut program.comptes, &mut program.membres, &mut program.groupes, &program.config, &filepath, &program.out, &program.err);
     if let Err(e) = res {
@@ -164,6 +209,13 @@ fn charger_from_list_presence(program: &mut ProgramData) -> Result<(), ()> {
 }
 
 fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
+
+    // Obtenir le dossier de sortie
+    let out_dir = program.get_out_dir("Sélectionnez le dossier de sortie");
+    if out_dir.is_none() {
+        let _ = program.err.write_line("Aucun dossier de sortie sélectionné.");
+        return Err(());
+    }
 
     // identifie quel enfant est sur quel site
     let mut site_mbrs: HashMap<&str, HashSet<MembreID>> = HashMap::new();
@@ -185,7 +237,8 @@ fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
         for mid in parts {
             if let Ok(membre) = program.membres.get(mid) {
                 let compte = program.comptes.get(membre.compte.unwrap_or_default()).unwrap_or(&NULL_COMPTE);
-                let _res = print_fiche_med(membre, compte, &program.config, site, true);
+
+                let _res = print_fiche_med(membre, compte, &program.config, site, false, out_dir.as_deref());
                 match _res {
                     Ok(_) => {
                         let _ = program.out.write_line(&format!("{}", style(format!("Impression de la fiche santé de [{} {}]", &membre.prenom, &membre.nom)).cyan()));
@@ -202,16 +255,16 @@ fn print_fiche_santes(program: &ProgramData) -> Result<(), ()> {
     Ok(())
 }
 
-fn print_presences_anim(program: &ProgramData) -> Result<(), ()> {
+fn print_presences_anim(program: &ProgramData, out_dir: Option<&str>) -> Result<(), ()> {
     let mut compte = 0;
     for grp in program.groupes.groupes() {
         compte += 1;
         if grp == &(*NULL_GROUPE) {continue;}
         if grp.sous_groupe.is_empty() {
-            print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config).expect("Oups");
+            print_presence_anim(grp, None, &program.membres, &program.comptes, &program.config, out_dir.as_deref()).expect("Oups");
         } else {
             for sg in &grp.sous_groupe {
-                print_presence_anim(grp, Some(sg), &program.membres, &program.comptes, &program.config).expect("AAAAAAh");
+                print_presence_anim(grp, Some(sg), &program.membres, &program.comptes, &program.config, out_dir.as_deref()).expect("AAAAAAh");
             }
         }
         
@@ -220,7 +273,7 @@ fn print_presences_anim(program: &ProgramData) -> Result<(), ()> {
     Ok(())
 }
 
-fn print_presences_sdj(program: &ProgramData) -> Result<(), ()> {
+fn print_presences_sdj(program: &ProgramData, out_dir: Option<&str>) -> Result<(), ()> {
     // Trouver toutes les combinaisons de (saison, site, semaine)
     let mut grp_info = HashSet::new();
     for grp in program.groupes.groupes() {
@@ -231,13 +284,23 @@ fn print_presences_sdj(program: &ProgramData) -> Result<(), ()> {
         grp_info.insert(gi);
     }
     for gi in grp_info.iter() {
-        let _ = print_presence_sdj(gi, &program.groupes, &program.membres, &program.comptes, &program.config);
+        let _ = print_presence_sdj(gi, &program.groupes, &program.membres, &program.comptes, &program.config, out_dir.as_deref());
     }
     Ok(())
 }
 
 fn charger_from_prog(program: &mut ProgramData) -> Result<(), ()> {
-    let filepath = read_file_path("fichier xlsx: ");
+    let filepath = rfd::FileDialog::new()
+        .set_title("Sélectionner le fichier de programmation")
+        .add_filter("excel", &["xlsx"])
+        .set_directory("/")
+        .pick_file();
+    if filepath.is_none() {
+        let _ = program.err.write_line("Aucun fichier sélectionné.");
+        return Err(());
+    }
+    let filepath = filepath.unwrap().to_str().unwrap().to_string();
+
     let mut wb = match Excel::open(&filepath) {
         Ok(wb) => wb,
         Err(e) => {
@@ -337,7 +400,11 @@ fn guess_nb_sous_groupes(grp: &Groupe) -> Option<usize> {
         (Some("basaltes"), i) => { // basaltes -> 15 par groupes
             Some((i as f32/15.0).ceil() as usize)
         },
-        (_, _) => { // inconnu, on doit demander
+        (Some("12-15 ans"), i) => {
+            Some((i as f32/15.0).ceil() as usize)
+        },
+        (_c, _) => { // inconnu, on doit demander
+            //println!("Cat de groupe inconnu: {:?}", c);
             let mut s1 = format!("Combien de sous groupe pour le groupe [{}]? ", grp.short_desc());
             let mut s2 = if let Some(cap) = &grp.capacite {
                 format!("(capacité de {cap}): ")

@@ -26,13 +26,21 @@ pub fn po<T: Display>(obj: Option<T>, delimiter: Delimiter) -> String {
 	}
 }
 
-pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: &str, update: bool) -> Result<(), PrintError> {
+pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: &str, update: bool, out_dir: Option<&str>) -> Result<(), PrintError> {
 	// calcul le nom du fichier de sortie
-	let dir = format!("{}/{}/fiche_med", config.out_dir, site);
+	let root_dir = out_dir.unwrap_or(&config.out_dir);
+	let dir = format!("{}/fiche_med/{}", root_dir, site);
 	let out_file = format!("{}/fichemed_{}_{}.pdf", dir, membre.nom, membre.prenom);
 
 	// make sure the directory exists
 	let _ = std::fs::create_dir_all(dir);
+
+	// leave early if no update and file arlready exists
+	if !update {
+		if let Ok(true) = std::path::Path::new(&out_file).try_exists() {
+  			return Ok(())
+  		}
+	}
 
 	// ouvre le fichier temporaire
 	let tmp_file_dir = format!("{}/templates", config.working_dir);
@@ -52,41 +60,34 @@ pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: 
 	
 	drop(file);
 	
-	let mut cmd = Command::new("typst");
-	cmd
-	.current_dir(&config.working_dir)
-		.arg("compile")
-		.arg(&tmp_file_path)
-		.arg(&out_file);
-	let output = cmd
-			.output()
-			.expect("failed to execute process");
-	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
-	if err.len() > 0 {
-		println!("{}", err);
+	let res = print_typst(config, &tmp_file_path, &out_file);
+	if let Err(e) = res {
+		println!("Error printing presence SDJ: {:?}", e);
+		return Err(e);
 	}
 
 	std::fs::remove_file(tmp_file_path).unwrap();
 	Ok(())
 }
 
-pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, membres: &MembreReg, comptes: &CompteReg, config: &Config) -> Result<(), PrintError> {
+pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>) -> Result<(), PrintError> {
 	print!("Attempting {} => ", groupe.short_desc());
+	let root = out_dir.unwrap_or(&config.out_dir);
 	// calcul le nom du fichier de sortie
 	let dir = format!("{out}/{saison}/{site}/anim/sem{semaine}", 
-		out=config.out_dir, 
-		site=groupe.site.as_deref().unwrap_or("none"), 
-		saison=groupe.saison.as_deref().unwrap_or("none"),
-		semaine=groupe.semaine.as_deref().unwrap_or("none"),
-	).replace(" ", "-");
+		out=root, 
+		site=groupe.site.as_deref().unwrap_or("none").replace(" ", "-"), 
+		saison=groupe.saison.as_deref().unwrap_or("none").replace(" ", "-"),
+		semaine=groupe.semaine.as_deref().unwrap_or("none").replace(" ", "-"),
+	);
 	let out_filename = format!("presence_anim_{activite}_{site}_{categorie}_{discriminant}{num}_{profil}_sem{semaine}.pdf", 
-		site=groupe.site.as_deref().unwrap_or("none"),
-		categorie=groupe.category.as_deref().unwrap_or("none"),
-		discriminant=groupe.discriminant.as_deref().unwrap_or("none"),
-		semaine=groupe.semaine.as_deref().unwrap_or("none"),
-		activite=groupe.activite.as_deref().unwrap_or("none"),
-		num=sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string).unwrap_or("none".into()),
-		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str).unwrap_or("none"),
+		site=groupe.site.as_deref().unwrap_or("none").replace(" ", "-"),
+		categorie=groupe.category.as_deref().unwrap_or("none").replace(" ", "-"),
+		discriminant=groupe.discriminant.as_deref().unwrap_or("none").replace(" ", "-"),
+		semaine=groupe.semaine.as_deref().unwrap_or("none").replace(" ", "-"),
+		activite=groupe.activite.as_deref().unwrap_or("none").replace(" ", "-"),
+		num=sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string).unwrap_or("none".into()).replace(" ", "-"),
+		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str).unwrap_or("none").replace(" ", "-"),
 	).replace(" ", "-");
 	let out_file = format!("{dir}/{filename}", dir=dir, filename=out_filename);
 
@@ -124,18 +125,10 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 	
 	drop(file);
 	
-	let mut cmd = Command::new("typst");
-	cmd
-	.current_dir(&config.working_dir)
-		.arg("compile")
-		.arg(&tmp_file_path)
-		.arg(&out_file);
-	let output = cmd
-			.output()
-			.expect("failed to execute process");
-	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
-	if !err.is_empty() {
-		println!("{}", err);
+	let res = print_typst(config, &tmp_file_path, &out_file);
+	if let Err(e) = res {
+		println!("Error printing presence SDJ: {:?}", e);
+		return Err(e);
 	}
 
 	std::fs::remove_file(tmp_file_path).unwrap();
@@ -162,16 +155,17 @@ fn get_mbr_sg(mid: MembreID, grp: &Groupe) -> Option<&SousGroupe> {
 	}
 	return None;
 }
-pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: &MembreReg, comptes: &CompteReg, config: &Config) -> Result<(), PrintError> {
+pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>) -> Result<(), PrintError> {
+	let root = out_dir.unwrap_or(&config.out_dir);
 	let out_dir = format!("{out}/{saison}/{site}/sdj", 
-		out=config.out_dir, 
-		site=info.site.unwrap_or("none"), 
-		saison=info.saison.unwrap_or("none")
-	).replace(" ", "-");
+		out=root, 
+		site=info.site.unwrap_or("none").replace(" ", "-"), 
+		saison=info.saison.unwrap_or("none").replace(" ", "-")
+	);
 	let out_filename = format!("presence_sdj_{saison}_{site}_sem{semaine}.pdf", 
-		site=info.site.unwrap_or("none"), 
-		saison=info.saison.unwrap_or("none"), 
-		semaine=info.semaine.unwrap_or("none")
+		site=info.site.unwrap_or("none").replace(" ", "-"), 
+		saison=info.saison.unwrap_or("none").replace(" ", "-"), 
+		semaine=info.semaine.unwrap_or("none").replace(" ", "-")
 	).replace(" ", "-");
 	let out_file = format!("{dir}/{file}", dir=out_dir, file=out_filename);
 	let _ = std::fs::create_dir_all(out_dir);
@@ -237,18 +231,10 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 
 	drop(file);
 
-	let mut cmd = Command::new("typst");
-	cmd
-	.current_dir(&config.working_dir)
-		.arg("compile")
-		.arg(&tmp_file_path)
-		.arg(&out_file);
-	let output = cmd
-			.output()
-			.expect("failed to execute process");
-	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
-	if err.len() > 0 {
-		println!("{}", err);
+	let res = print_typst(config, &tmp_file_path, &out_file);
+	if let Err(e) = res {
+		println!("Error printing presence SDJ: {:?}", e);
+		return Err(e);
 	}
 
 	//std::fs::remove_file(tmp_file_path).unwrap();
@@ -352,4 +338,22 @@ fn mk_groupe(groupe: &Groupe, sous_groupe: Option<&SousGroupe>) -> String {
 	groupe_num=po(sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string), Delimiter::Brackets),
 	profil=po(sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str), Delimiter::Brackets),
 	)
+}
+
+fn print_typst(config: &Config, tmp_file_path: &str, out_file: &str) -> Result<(), PrintError> {
+	let mut cmd = Command::new("typst");
+	cmd
+	.current_dir(&config.typst_working_dir)
+		.arg("compile")
+		.arg(tmp_file_path)
+		.arg(out_file);
+	let output = cmd
+			.output()
+			.expect("failed to execute process");
+	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
+	if !err.is_empty() {
+		println!("{}", err);
+	}
+	//std::fs::remove_file(tmp_file_path).unwrap();
+	Ok(())
 }

@@ -3,6 +3,7 @@ pub struct Config {
     pub working_dir: String,
     pub verbose: bool,
     pub excel: ExcelConfig,
+    pub typst_working_dir: String,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -11,6 +12,7 @@ impl Default for Config {
             verbose: true,
             excel: ExcelConfig::default(),
             working_dir: "/Users/leojetzer/Documents/presencejj".into(),
+            typst_working_dir: "templates".into(),
         }
     }
 }
