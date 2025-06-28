@@ -11,7 +11,7 @@ impl Default for Config {
             out_dir: "./out".into(),
             verbose: true,
             excel: ExcelConfig::default(),
-            working_dir: "/Users/leojetzer/Documents/presencejj".into(),
+            working_dir: ".".into(),
             typst_working_dir: "templates".into(),
         }
     }
