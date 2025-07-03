@@ -295,6 +295,7 @@
 		#let bloc = (
 			if exists(enfant.allergies) [*Allergies: * #enfant.allergies.join(", ")],
 			if exists(enfant.compte.mandataire) [*Mandataire: * #enfant.compte.mandataire],
+			if exists(enfant.compte.tel) [*Tel:* #enfant.compte.tel],
 			if exists(grp) [*Groupe:* #grp.join(" ")],
 		)
 		#bloc.filter(it => exists(it)).join("; ")

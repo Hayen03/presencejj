@@ -14,7 +14,7 @@ lazy_static! {
 	pub static ref ADRESSE_RUE_REGEX: Regex =
 		Regex::new(r"^\s*(?:(?P<app>\d+)\s*-\s*)?(?P<num>\d+)?(?:\s*,\s*|\s+)(?P<rue>.+?)\s*$")
 			.unwrap();
-	pub static ref ADRESSE_FULL_REGEX: Regex = Regex::new(r"^\s*(?:[\w-]*\s*:\s*)?(?P<num>\d+),?\s+(?P<rue>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .]+)(?:\s*#(?P<app>\d+))?\s+,?(?P<ville>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .]+),\s*(?P<province>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .]+)\s*,\s*(?P<pays>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .]+)\s*,\s*(?P<codepostal>[a-zA-Z][0-9][a-zA-Z] ?[0-9][a-zA-Z][0-9])$").unwrap();
+	pub static ref ADRESSE_FULL_REGEX: Regex = Regex::new(r"^\s*(?P<num>\d+)\s*(?:,\s*)?(?P<rue>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)(?:\s*(,\s*)?#(?P<app>\d+))?\s*,\s*(?P<ville>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<province>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<pays>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<codepostal>[a-zA-Z][0-9][a-zA-Z] ?[0-9][a-zA-Z][0-9])\s*$").unwrap();
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
