@@ -549,14 +549,10 @@ fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Compte, E
         if cmpt.tel.is_none() {
             println!("N'a pu lire le numéro de téléphone pour le compte '{}'", cmpt.mandataire);
         }
-    } else {
-        panic!("Tel col does not exist...");
     }
     if let Some(col_adr) = dcc.adresse {
         let adr = into_string(&ln[col_adr]).map(|s| Adresse::from_full(&s).ok());
         cmpt.adresse = adr.unwrap_or_default();
-    } else {
-        panic!("Adr col does not exist...");
     }
     cmpt.id = CompteID(cmpt.get_id_seed());
     Ok(cmpt)
