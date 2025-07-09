@@ -1,6 +1,6 @@
 use chrono::{Datelike, Local};
 
-use crate::{config::Config, data::cam::CAM, groupes::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
+use crate::{config::Config, data::cam::CAM, groupes::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeID, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
 
 use super::PrintError;
 use core::str;
@@ -162,18 +162,19 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 		site=info.site.unwrap_or("none").replace(" ", "-"), 
 		saison=info.saison.unwrap_or("none").replace(" ", "-")
 	);
-	let out_filename = format!("presence_sdj_{saison}_{site}_sem{semaine}.pdf", 
+	let out_filebase = format!("presence_sdj_{saison}_{site}_sem{semaine}", 
 		site=info.site.unwrap_or("none").replace(" ", "-"), 
 		saison=info.saison.unwrap_or("none").replace(" ", "-"), 
 		semaine=info.semaine.unwrap_or("none").replace(" ", "-")
 	).replace(" ", "-");
+	let out_filename = format!("{}.pdf", out_filebase);
 	let out_file = format!("{dir}/{file}", dir=out_dir, file=out_filename);
 	let _ = std::fs::create_dir_all(out_dir);
 
 	// ouvre le fichier temporaire
 	let tmp_file_dir = format!("{}/templates", config.working_dir);
 	let _ = std::fs::create_dir_all(&tmp_file_dir);
-	let tmp_file_path = format!("{}/tmp.typ", tmp_file_dir);
+	let tmp_file_path = format!("{}/tmp{}.typ", tmp_file_dir, out_filebase);
 	let mut file = OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path).expect("Could not open temporary file");
 
 	let _ = write!(file,
@@ -189,8 +190,13 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 	);
 	
 	let mut participants = HashSet::new();
+	let mut mids: HashSet<MembreID> = HashSet::new();
 	for grp in groupes.groupes().filter(|g| filter_grp(g, info) ) {
 		for p in grp.participants.iter() {
+			if mids.contains(p) {
+				continue; // already processed this participant
+			}
+			mids.insert(*p);
 			participants.insert(*p);
 			let (profil, anim) = match get_mbr_sg(*p, grp) {
 				None => (None, None),
@@ -198,8 +204,8 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 			};
 			let cat = grp.category.as_ref();
 			let disc = grp.discriminant.as_ref();
-			let _ = write!(file, 
-"\"{mid}\": new_groupe(categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, profil: {profil}),\n",
+			let _ = writeln!(file, 
+"\"{mid}\": new_groupe(categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, profil: {profil}),",
 				mid=p,
 				categorie=po(cat, Delimiter::Brackets),
 				discriminant=po(disc, Delimiter::Brackets),
@@ -237,7 +243,7 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 		return Err(e);
 	}
 
-	//std::fs::remove_file(tmp_file_path).unwrap();
+	std::fs::remove_file(tmp_file_path).unwrap();
 	println!("Wrote {}", out_file);
 	Ok(())
 }

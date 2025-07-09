@@ -111,7 +111,7 @@ impl Groupe {
             sg.groupe = self.id;
             sg.disc = disc as u32;
             // retirer des candidats les membres ajoutés au sg
-            candidats = candidats.into_iter().filter(|mbr| !sg.contains(*mbr)).collect();
+            candidats.retain(|mbr| !sg.contains(*mbr));
 
             self.sous_groupe.push(sg);
         }
@@ -205,14 +205,14 @@ impl GroupeReg {
     pub fn get_new_id(&self) -> GroupeID {
         let mut gid = GroupeID(rand::random());
         while self.reg.contains_key(&gid) {
-            gid = GroupeID(gid.0+1)
+            gid.0 += 1;
         }
         gid
     }
     pub fn get_new_id_from_seed(&self, seed: u32) -> GroupeID {
         let mut gid = GroupeID(seed);
         while self.reg.contains_key(&gid) {
-            gid = GroupeID(gid.0+1)
+            gid.0 += 1;
         }
         gid
     }

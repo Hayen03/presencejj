@@ -16,7 +16,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
     let _ = out_term.write_line(&format!("Lecture de \"{}\"", style(filepath).green()));
     let sheets = wb.sheet_names().unwrap();
     let mut dc = None;
-    for sheet in sheets {
+    for sheet in sheets.into_iter().filter(|s| s.to_lowercase() != "groupes vides") {
         let rng = wb.worksheet_range(&sheet).unwrap();
         let g = extract_group_info(&rng);
         //println!("{} = {}", g.id, g.desc());
@@ -33,6 +33,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                     let id = groupes.get_new_id_from_seed(grp.id.0);
                     grp.id = id;
                     let _ = groupes.add(grp);
+                    let _ = out_term.write_line(&format!("Groupe ajouté sous l'ID {}", id));
                     id
                 } else {
                     // 1.2 Si oui, prendre le premier groupe (devrait être le seul)
