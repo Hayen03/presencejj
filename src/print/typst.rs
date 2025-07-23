@@ -20,7 +20,7 @@ pub fn po<T: Display>(obj: Option<T>, delimiter: Delimiter) -> String {
 		Delimiter::Quotes => obj.map_or("none".into(), |s| format!("\"{}\"", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("\"", "\\\""))),
 		Delimiter::Brackets => obj.map_or("none".into(), |s| format!("[{}]", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("$", r"\$"))),
 		Delimiter::Dollars => obj.map_or("none".into(), |s| format!("${}$", s.to_string().replace("#", r"\#").replace("@", r"\@").replace("$", r"\$"))),
-		Delimiter::Parentheses => obj.map_or("none".into(), |s| format!("({})", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
+		Delimiter::Parentheses => obj.map_or("none".into(), |s| format!("({})", s.to_string().replace("#", r"\#"))), // .replace("@", r"\@")
 		Delimiter::Braces => obj.map_or("none".into(), |s| format!("{{{}}}", s.to_string().replace("#", r"\#").replace("@", r"\@"))),
 		Delimiter::None => obj.map_or("none".into(), |s| s.to_string().replace("#", r"\#").replace("@", r"\@").to_string()),
 	}
@@ -220,10 +220,10 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 "
 	);
 	let mut participants = participants.into_iter().map(|mid| membres.get(mid).expect("Membre non existant")).collect::<Vec<_>>();
-	participants.sort_by(|arg0: &&Membre, other: &&Membre| Membre::cmp_nom(*arg0, *other));
+	participants.sort_by(|arg0: &&Membre, other: &&Membre| Membre::cmp_nom(arg0, other));
 	for membre in participants.iter() {
 		let compte = membre.compte.map(|c| comptes.get(c).expect("Compte non existant")).unwrap_or(&NULL_COMPTE);
-		let _ = write!(file,"{},\n", mk_membre(membre, compte));
+		let _ = writeln!(file,"{},", mk_membre(membre, compte));
 	}
 	let _ = write!(file, 
 ")
@@ -258,7 +258,7 @@ fn mk_membre(membre: &Membre, compte: &Compte) -> String {
 		allergies: ({allergies}),
 		maladies: ({maladies}),
 		prob_comportement: {prob_comportement},
-		compte: new_compte(mandataire: [{mandataire}], tel: {tel}, adresse: {adresse}, email: \"{email}\"),
+		compte: new_compte(mandataire: \"{mandataire}\", tel: {tel}, adresse: {adresse}, email: \"{email}\"),
 		prise_med: {prise_med},
 		auth_soins: {auth_soins},
 		medicaments: new_medicaments(anti_inflamatoire: {med_anti_infl}, sirop_toux: {med_sirop}, ibuprofene: {med_ibu}, antiemetique: {med_antieme}, antibiotique: {med_antibio}, acetaminophene: {med_acet},),
