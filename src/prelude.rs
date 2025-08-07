@@ -98,15 +98,6 @@ impl<T> Swap for Option<T> {
 	}
 }
 
-pub fn arc_mut<T>(arc: &A<T>) -> Option<&mut T> {
-	if A::strong_count(arc) > 1 {
-		None
-	} else {
-		let ptr = A::as_ptr(arc) as *mut T;
-		unsafe { ptr.as_mut() }
-	}
-}
-
 pub fn slice2array<T, const N: usize>(slice: &[T]) -> Result<&[T; N], &'static str> {
 	if slice.len() < N {
 		return Err("Given slice is not of an appropriate element");

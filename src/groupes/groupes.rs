@@ -150,7 +150,7 @@ impl Groupe {
             self.activite.as_ref().map(String::from),
             self.site.as_ref().map(String::from),
             self.category.as_ref().map(String::from),
-            self.discriminant.as_ref().map(|s| format!("Sem. {}", s)),
+            self.semaine.as_ref().map(|s| format!("Sem. {}", s)),
         ];
         let s: String = l.into_iter().flatten().collect::<Vec<String>>().join(" | ");
         if let Some(disc) = &self.discriminant {
@@ -194,6 +194,10 @@ impl Groupe {
             }
         }
         None
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.saison.is_none() && self.site.is_none() && self.category.is_none() && self.semaine.is_none() && self.activite.is_none()
     }
 }
 

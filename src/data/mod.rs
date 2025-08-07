@@ -7,6 +7,7 @@ pub mod adresse;
 pub mod cam;
 pub mod tel;
 pub mod email;
+pub mod stats;
 
 lazy_static! {
 	pub static ref email_re: Regex = Regex::new(r"([\w\-.]+)@(?:([\w-])+\.)+([\w-]+)").unwrap();

@@ -59,7 +59,12 @@ fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Resul
         None => None,
     };
     g.id = GroupeID(g.get_id_seed());
-    Ok(g)
+
+    if g.activite.is_none() || g.saison.is_none() || g.activite.as_ref().unwrap().is_empty() || g.saison.as_ref().unwrap().is_empty() {
+        Err(ExtractError::NotAGroup)
+    } else {
+        Ok(g)
+    }
 }
 
 pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, err: &Term) {
@@ -69,36 +74,31 @@ pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, er
         if i == 0 {
             config = ProgLnConfig::guess(row);
             println!("{:?}", config.programmation)
-        } else {
-            match extract_group_info_from_prog(row, &config) {
-                Ok(mut grp) => {
-                    let _ = out.write_line(&format!("LECTURE {desc}", desc=grp.desc()));
+        } else if let Ok(mut grp) = extract_group_info_from_prog(row, &config) {
+            let _ = out.write_line(&format!("LECTURE {desc}", desc=grp.desc()));
 
-                    let cap = grp.capacite;
+            let cap = grp.capacite;
 
-                    // 1. Voir si le groupe existe déjà
-                    let existing_grp = reg.groupes().filter(|g| g.equiv(&grp)).map(|g| g.id).collect::<Vec<GroupeID>>();
-                    let gid = if existing_grp.is_empty() {
-                        // 1.1 Si non, rajouter le groupe
-                        let id = reg.get_new_id_from_seed(grp.id.0);
-                        grp.id = id;
-                        let _ = reg.add(grp);
-                        id
-                    } else {
-                        // 1.2 Si oui, prendre le premier groupe (devrait être le seul)
-                        existing_grp[0]
-                    };
-                    let groupe = reg.get_mut(gid).unwrap();
+            // 1. Voir si le groupe existe déjà
+            let existing_grp = reg.groupes().filter(|g| g.equiv(&grp)).map(|g| g.id).collect::<Vec<GroupeID>>();
+            let gid = if existing_grp.is_empty() {
+                // 1.1 Si non, rajouter le groupe
+                let id = reg.get_new_id_from_seed(grp.id.0);
+                grp.id = id;
+                let _ = reg.add(grp);
+                id
+            } else {
+                // 1.2 Si oui, prendre le premier groupe (devrait être le seul)
+                existing_grp[0]
+            };
+            let groupe = reg.get_mut(gid).unwrap();
 
-                    // 2. mettre à jour certaines données
-                    if !existing_grp.is_empty() {
-                        groupe.capacite = match cap {
-                            None => groupe.capacite,
-                            Some(cap) => Some(cap),
-                        }
-                    }
-                },
-                Err(_) => {},
+            // 2. mettre à jour certaines données
+            if !existing_grp.is_empty() {
+                groupe.capacite = match cap {
+                    None => groupe.capacite,
+                    Some(cap) => Some(cap),
+                }
             }
         }
     }

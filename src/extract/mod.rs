@@ -13,6 +13,7 @@ pub enum ExtractError {
     InvalidGroupNameFormat,
     CouldNotReadFile,
     MissingInformations(&'static str),
+    NotAGroup,
 }
 impl Display for ExtractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -24,6 +25,7 @@ impl Display for ExtractError {
                 ExtractError::InvalidGroupNameFormat => "Nom de groupe invalide".into(),
                 ExtractError::CouldNotReadFile => "N'a pu lire le fichier".into(),
                 ExtractError::MissingInformations(s) => format!("Information manquante ({})", s),
+                ExtractError::NotAGroup => "N'est pas un groupe".into()
             }
         )
     }

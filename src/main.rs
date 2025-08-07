@@ -10,7 +10,7 @@ use office::Excel;
 use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
 
-use crate::groupes::membres;
+use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::membres};
 
 pub mod data;
 pub mod extract;
@@ -56,6 +56,17 @@ impl ProgramData {
         *old_dir = dir;
         Some(path)
     }
+    pub fn get_out_xlsx(&self, title: &str) -> Option<String> {
+        let old_dir = self.old_out_dir.read().unwrap();
+        let file = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_str())
+            .add_filter("xlsx", &["xlsx"])
+            .pick_file();
+        file.map(|p| {
+            p.to_str().unwrap().to_string()
+        })
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -87,6 +98,21 @@ enum EstimationChandailMode {
     Complex,
     #[default]
     Annuler,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+enum YesNo {
+    Yes,
+    #[default]
+    No,
+}
+impl YesNo {
+    pub fn as_bool(&self) -> bool {
+        match self {
+            YesNo::Yes => true,
+            YesNo::No => false,
+        }
+    }
 }
 
 fn main() {
@@ -166,7 +192,22 @@ fn main() {
                 wait_to_continue()
             },
             ProgramActions::ImprimerStats => {
-                let _res = program.out.write_line("Calcul des statistiques... (Pas encore implémenté)");
+                let _ = program.out.write_line("Souhaitez-vous calculer les annulations (vous devez les entrer manuellement)?");
+                let do_annulation = choose_option(&program.out, &[
+                    ("Oui", YesNo::Yes),
+                    ("Non", YesNo::No),
+                ]).as_bool();
+                let _ = program.out.write_line("Souhaitez-vous calculer les liste d'attente (vous devez les entrer manuellement)?");
+                let do_attente = choose_option(&program.out, &[
+                    ("Oui", YesNo::Yes),
+                    ("Non", YesNo::No),
+                ]).as_bool();
+                let out_file = program.get_out_xlsx("Sélectionnez le dossier de sortie");
+                if let Some(out_file) = out_file {
+                    let _res = print_stats(&program, out_file, do_annulation, do_attente);
+                } else {
+                    let _ = program.err.write_line("Aucun fichier de sortie sélectionné.");
+                }
                 wait_to_continue()
             },
             ProgramActions::AfficherDonnees => {
@@ -445,6 +486,19 @@ fn estimation_chandail(program: &ProgramData) -> Result<(), ()> {
         total += nb;
     }
     let _ = program.out.write_line(&format!("Total: {}", total));
+
+    Ok(())
+}
+
+fn print_stats(program: &ProgramData, out: String, do_annulation: bool, do_attente: bool) -> Result<(), ()> {
+    let (stats, gstats) = fill_stats(program.groupes.groupes(), &program.membres, &program.comptes, do_annulation, do_attente);
+    let ustats = get_unique_stats(program.groupes.groupes());
+
+    let _res = print_stats_to_excel(&stats, &gstats, &program.groupes, &ustats, &format!("{}", out), &program.out, &program.err);
+    if let Err(e) = _res {
+        let _ = program.err.write_line(&format!("Erreur lors de l'écriture des statistiques: {}", e));
+        return Err(());
+    }
 
     Ok(())
 }
