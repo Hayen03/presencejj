@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 use console::{style, Term};
 use office::{DataType, Excel, Range};
@@ -16,6 +16,10 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
     let _ = out_term.write_line(&format!("Lecture de \"{}\"", style(filepath).green()));
     let sheets = wb.sheet_names().unwrap();
     let mut dc = None;
+
+    let logger = |err: &str| {
+        let _ = err_term.write_line(err);
+    };
     for sheet in sheets.into_iter().filter(|s| s.to_lowercase() != "groupes vides") {
         let rng = wb.worksheet_range(&sheet).unwrap();
         let g = extract_group_info(&rng);
@@ -53,7 +57,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                 let rows = rng.rows().skip(config.excel.ln_skip);
                 for ln in rows {
                     // 2.1 Trouver le compte
-                    match extract_compte_info(ln, dcc) {
+                    match extract_compte_info(ln, dcc, Some(&logger)) {
                         Err(e) => {
                             let _ = err_term.write_line(&format!("Erreur en lisant le compte '{}': {}", print_option(&into_string(&ln[0])), e));
                         },
@@ -84,7 +88,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
                                         else {
                                             let id = membres.get_new_id_from_seed(mbr.id.0);
                                             mbr.id = id;
-                                            fill_membre_info(ln, dcc, &mut mbr, err_term);
+                                            fill_membre_info(ln, dcc, &mut mbr, Some(&logger));
                                             //println!("{:?}", mbr);
                                             let _ = membres.add(mbr);
                                             id
@@ -112,7 +116,7 @@ pub fn fill_regs(comptes: &mut CompteReg, membres: &mut MembreReg, groupes: &mut
     Ok(())
 }
 
-fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
+pub fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
     let mut g = Groupe::default();
     let grp_desc = into_string(ws.get_value(0, 0));
     if grp_desc.is_none() {return Err(ExtractError::InvalidFormat);}
@@ -165,7 +169,7 @@ fn extract_group_info(ws: &Range) -> Result<Groupe, ExtractError> {
     Ok(g)
 }
 
-fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membre, ExtractError> {
+pub fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membre, ExtractError> {
     let mut mbr = Membre::default();
     let col_nom = match dcc.nom {
         None => return Err(ExtractError::MissingInformations("Nom")),
@@ -207,7 +211,7 @@ fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membre, E
     mbr.id = MembreID(mbr.get_id_seed());
     Ok(mbr)
 }
-fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, err_term: &Term) {
+pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, logerr: Option<&impl Fn(&str) -> ()>) {
     // allergies
     if let Some(col) = dcc.all_alim {
         if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
@@ -355,7 +359,9 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match CAM::from_str(&s) {
                 Ok(cam) => membre.fiche_sante.cam = Some(cam),
-                Err(_e) => {let _ = err_term.write_line(&format!("Erreur en lisant le CAM: {} ({})", s, _e.to_string()));},
+                Err(_e) => {
+                    logerr.map(|f| f(&format!("Erreur en lisant le CAM: {} ({})", s, _e.to_string())));
+                },
             }
         }
     }
@@ -365,7 +371,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Genre::from_str(&s) {
                 Ok(genre) => membre.genre = Some(genre),
-                Err(_) => {let _ = err_term.write_line(&format!("Erreur en lisant le genre: {}", s));},
+                Err(_) => {logerr.map(|f| f(&format!("Erreur en lisant le genre: {}", s)));},
             }
         }
     }
@@ -375,7 +381,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[0] = Some(interet),
-                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 1er interet: {}", s))); }
             }
         }
     }
@@ -383,7 +389,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[1] = Some(interet),
-                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 2ème interet: {}", s))); }
             }
         }
     }
@@ -391,7 +397,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[2] = Some(interet),
-                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 3ème interet: {}", s))); }
             }
         }
     }
@@ -399,7 +405,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[3] = Some(interet),
-                Err(_) => { let _ = err_term.write_line("Erreur en lisant le 1er interet"); }
+                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 4ème interet: {}", s))); }
             }
         }
     }
@@ -512,7 +518,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
         if let Some(s) = into_string(&ln[col]) {
             match Taille::from_str(&s) {
                 Ok(t) => membre.taille = Some(t),
-                Err(_e) => { let _ = err_term.write_line("Erreur en lisant la taille"); }
+                Err(_e) => { logerr.map(|f| f(&format!("Erreur en lisant la taille: {}", s))); }
             }
         }
     }
@@ -530,7 +536,7 @@ fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, e
     }
 }
 
-fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Compte, ExtractError> {
+pub fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig, logerr: Option<&impl Fn(&str) -> ()>) -> Result<Compte, ExtractError> {
     let mut cmpt = Compte::default();
     let col_mandataire = match dcc.mandataire {
         None => return Err(ExtractError::MissingInformations("Mandataire")),
@@ -548,7 +554,7 @@ fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Compte, E
         let t = into_string(&ln[col_tel]).map(|s| Tel::from_str(&s).ok());
         cmpt.tel = t.unwrap_or_default();
         if cmpt.tel.is_none() {
-            println!("N'a pu lire le numéro de téléphone pour le compte '{}'", cmpt.mandataire);
+            logerr.map(|f| f(&format!("N'a pu lire le numéro de téléphone pour le compte '{}'", cmpt.mandataire)));
         }
     }
     if let Some(col_adr) = dcc.adresse {
@@ -626,7 +632,7 @@ pub fn into_bool_with_comment(data: &DataType) -> O<(bool, O<String>)> {
 }
 
 #[derive(Debug)]
-struct DataColConfig {
+pub struct DataColConfig {
     nom: O<usize>,
     prenom: O<usize>,
     genre: O<usize>,
@@ -679,7 +685,7 @@ struct DataColConfig {
     commentaire: O<usize>,
 }
 impl DataColConfig {
-    fn new(rng: &Range, ln: usize) -> Self {
+    pub fn new(rng: &Range, ln: usize) -> Self {
         // créer la ligne que l'on pourra fouiller
         let mut i = 0;
         let (_, tgt) = rng.get_size();

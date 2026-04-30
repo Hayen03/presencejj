@@ -33,3 +33,11 @@ Les étapes pour générer les listes de présences et les fiches médicales son
 5. *Générer les fiches médicales*: Sélectionnez l'option 4, puis choisissez le dossier de sortie. PrésenceJJ n'écrase pas les fiches médicales déjà existantes, et ne génère que celles des nouveaux enfants. Vous pouvez donc trier par date de création pour n'imprimer que les nouvelles fiches.
 6. *Générer les listes de présences*: Sélectionnez l'option 5, puis choisissez le dossier de sortie.
 7. *Imprimer les fiches et listes*: Imprimer les documents générés de la manière de votre choix.
+
+== Statistiques de Camp
+Pour générer les statistiques de camp, il faut suivre les étapes suivantes:
+1. *Télécharger les informations de Qidigo*: Il faut obligatoirement télécharger les listes de présences et optionellement la programmation. Pour la liste de présences, il faut faire attention: les groupes en attente ou brouillon sont considéré comme vide par Qidigo et paraissent donc vide dans le fichier télécharger; Pour faire les statistiques de camp de l'été complet, il faut donc s'assurer que tous les groupes soient actifs. Si vous ne téléchargez pas la programmation, vous allez devoir rentrer les capacités des groupes manuellement, ce qui est une tâche longue.
+2. *Ouvrir PrésenceJJ*: Ouvrir le programme en double-cliquant sur le script `presencejj.bat`
+3. *Lire à partir de la liste de présences*: Sélectionnez l'option 2, puis choisissez le fichier téléchargé à l'étape 1 pour charger les informations.
+4. *(Optionnel) Lire à partir de la programmation*: Sélectionnez l'option 1, puis choisissez le fichier téléchargé à l'étape 1 pour charger les informations.
+5. *Générer les statistiques de camp*: Sélectionnez l'option 7. Le programme va vous demander si vous voulez tout de suite rentrer les nombre d'annulations et d'enfant sur les liste d'attente. Si vous répondez non, vous pourrez toujours rajouter ces informations plus tard dans le fichier excel généré. Vous devrez ensuite choisir le fichier de sortie, puis entrer toute information manquante (comme les capacités des groupes si vous n'avez pas téléchargé la programmation). Le programme va ensuite générer un fichier excel contenant les statistiques de camp.

@@ -81,6 +81,17 @@ pub enum CompteErr {
     MembreDejaDansUnCompte(MembreID),
     MembreSansCompte(MembreID),
 }
+impl std::fmt::Display for CompteErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompteErr::MembreDejaExistant(mid) => write!(f, "Membre déjà existant dans le compte: {}", mid),
+            CompteErr::MembreInexistant(mid) => write!(f, "Membre inexistant dans le compte: {}", mid),
+            CompteErr::MembreDejaDansUnCompte(mid) => write!(f, "Membre déjà dans un compte: {}", mid),
+            CompteErr::MembreSansCompte(mid) => write!(f, "Membre sans compte: {}", mid),
+        }
+    }
+}
+impl std::error::Error for CompteErr {}
 
 #[derive(Debug, Clone, Default)]
 pub struct CompteReg {

@@ -2,7 +2,7 @@ use std::{collections::{BTreeSet, HashMap, HashSet}, fmt::Display, fs::File, has
 
 use console::Term;
 use lazy_static::lazy_static;
-use rand::rand_core::le;
+//use rand::rand_core::le;
 use rust_xlsxwriter::{chart::{Chart, ChartDataLabel, ChartType}, workbook::Workbook, worksheet::Worksheet, Color, Format, FormatAlign, FormatBorder, Formula, Table, TableColumn, TableFunction, XlsxError};
 
 use crate::{data::adresse::CodePostal, groupes::{comptes::CompteReg, groupes::{Groupe, GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg}}};

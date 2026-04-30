@@ -1,3 +1,5 @@
+
+#[derive(Debug)]
 pub struct Config {
     pub out_dir: String, 
     pub working_dir: String,
@@ -16,6 +18,7 @@ impl Default for Config {
         }
     }
 }
+#[derive(Debug, Clone, Copy)]
 pub struct ExcelConfig {
     pub ln_skip: usize,
     pub data_ln: usize,

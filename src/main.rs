@@ -10,7 +10,7 @@ use office::Excel;
 use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
 
-use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::membres};
+use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::{RegError, comptes::{CompteErr, CompteID}, groupes::GroupeID, membres}, ui::{UIError, app::App, event::{EventError, EventHandler}, tui::{self, Tui, TuiError}}};
 
 pub mod data;
 pub mod extract;
@@ -115,7 +115,73 @@ impl YesNo {
     }
 }
 
+#[derive(Debug)]
+enum AppError {
+    IOError{src: std::io::Error},
+    EventError {src: EventError },
+    ExcelError,
+    Report{ report: color_eyre::Report},
+    Panic,
+    Runtime { src: Box<dyn std::any::Any> },
+    Extract { src: extract::ExtractError },
+    GroupeRegistry { src: RegError<GroupeID> },
+    CompteRegistry { src: RegError<CompteID> },
+    MembreRegistry { src: RegError<MembreID> },
+    CancelAction { desc: String },
+    Compte { src: CompteErr },
+}
+impl From<UIError> for AppError {
+    fn from(_src: UIError) -> Self {
+        match _src {
+            UIError::IO { src } => AppError::IOError { src },
+            UIError::Event { src } => AppError::EventError { src },
+            UIError::Runtime { src } => AppError::Runtime { src },
+            UIError::Extract { src } => AppError::Extract { src },
+            UIError::GroupeRegistry { src } => AppError::GroupeRegistry { src },
+            UIError::CompteRegistry { src } => AppError::CompteRegistry { src },
+            UIError::MembreRegistry { src } => AppError::MembreRegistry { src },
+            UIError::CancelAction { desc } => AppError::CancelAction { desc },
+            UIError::Compte { src } => AppError::Compte { src },
+        }
+    }
+}
+impl From<color_eyre::Report> for AppError {
+    fn from(report: color_eyre::Report) -> Self {
+        AppError::Report { report }
+    }
+}
+impl From<TuiError> for AppError {
+    fn from(value: TuiError) -> Self {
+        match value {
+            TuiError::IOError { src } => AppError::IOError { src },
+        }
+    }
+}
+
 fn main() {
+    let result = main_new();
+    println!("{:?}", result);
+}
+
+fn main_new() -> Result<(), AppError> {
+    color_eyre::install()?;
+    let terminal = ratatui::init();
+    let events = EventHandler::new(250);
+    let mut terminal = Tui::new(terminal, events);
+    terminal.enter()?;
+    let result = App::default().run(&mut terminal);
+    if let Err(err) = terminal.exit() {
+        eprintln!("Erreur lors de la restauration du terminal. Rouvrir le terminal pour récupérer: {}", err);
+        return Err(AppError::Panic);
+    }
+    if let Err(err) = result {
+        eprintln!("Erreur lors de l'exécution de l'application: {}", err);
+        return Err(AppError::from(err));
+    }
+    Ok(())
+}
+
+fn main_old() -> Result<(), AppError> {
     let out_term = console::Term::stdout();
     let err_term = console::Term::buffered_stderr();
     let mut config = Config{
@@ -223,6 +289,8 @@ fn main() {
 
     //let _res = print_presences_anim(&program);
     //let _res = print_presences_sdj(&program);
+
+    Ok(())
 
 }
 
