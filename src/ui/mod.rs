@@ -46,7 +46,7 @@ impl From<ExtractError> for UIError {
 }
 impl From<office::Error> for UIError {
 	fn from(value: office::Error) -> Self {
-		UIError::Extract { src: ExtractError::CouldNotReadFile }
+		UIError::Extract { src: ExtractError::OfficeError { src: value } }
 	}
 }
 impl From<RegError<GroupeID>> for UIError {
@@ -109,6 +109,8 @@ pub struct Theme {
 	progress_bar_max_width: u16,
 	max_error_box_width: u16,
 	max_error_box_height: u16,
+	info_box_max_width: u16,
+	info_box_max_height: u16,
 }
 impl Theme {
 	const DARK: Self = Self {
@@ -123,6 +125,8 @@ impl Theme {
 		progress_bar_max_width: 120,
 		max_error_box_width: 160,
 		max_error_box_height: 40,
+		info_box_max_width: 80,
+		info_box_max_height: 60,
 	};
 }
 

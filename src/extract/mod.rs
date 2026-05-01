@@ -7,13 +7,14 @@ use regex::Regex;
 pub mod excel;
 pub mod prog;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum ExtractError {
     InvalidFormat,
     InvalidGroupNameFormat,
     CouldNotReadFile,
     MissingInformations(&'static str),
-    NotAGroup,
+    NotAGroup {missing: Vec<&'static str>},
+    OfficeError { src: office::Error },
 }
 impl Display for ExtractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -25,7 +26,8 @@ impl Display for ExtractError {
                 ExtractError::InvalidGroupNameFormat => "Nom de groupe invalide".into(),
                 ExtractError::CouldNotReadFile => "N'a pu lire le fichier".into(),
                 ExtractError::MissingInformations(s) => format!("Information manquante ({})", s),
-                ExtractError::NotAGroup => "N'est pas un groupe".into()
+                ExtractError::NotAGroup {missing} => format!("Pas un groupe (manque [{}])", missing.join(", ")),
+                ExtractError::OfficeError { src } => format!("Erreur lors de la lecture du fichier: {}", src),
             }
         )
     }

@@ -238,7 +238,9 @@ impl App {
 				Ok(true)
 			},
 			UpdateAction::ErrorReplace(err) => {
-				self.sub_screen_stack.pop();
+				if self.sub_screen_stack.pop().is_none() {
+					self.stack.pop();
+				}
 				self.sub_screen_stack.push(Box::new(ErrorScreen::from_error(err)));
 				Ok(true)
 			},
@@ -293,15 +295,6 @@ impl Widget for &App {
 				// the subscreen is given the full inner area, but it can choose to render itself in a smaller area if it wants to
 				sub_screen.render_focus(inner, buf, std::ptr::addr_eq(focus_on, sub_screen.as_ref() as *const dyn Screen));
 			}
-		}
-		let screen_area = Rect {
-			x: area.x + 1,
-			y: area.y + 1,
-			width: area.width.saturating_sub(2),
-			height: area.height.saturating_sub(2),
-		};
-		if let Some(screen) = self.stack.last() {
-			screen.render_ref(screen_area, buf);
 		}
 	}
 }

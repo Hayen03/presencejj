@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ratatui::{style::Stylize, text::{Line, Text, ToText}, widgets::{Paragraph, Widget, WidgetRef}};
+use ratatui::{style::{Style, Stylize}, text::{Line, Text, ToText}, widgets::{Paragraph, Widget, WidgetRef}};
 
 use crate::ui::{AppState, Screen};
 
@@ -50,6 +50,7 @@ impl WidgetRef for ErrorScreen<'_> {
 			.title(title)
 			.title_bottom(instruction)
 			.border_set(ratatui::symbols::border::THICK)
+			.border_style(Style::new().red())
 			.bg(ratatui::style::Color::Black);
 		let error_text = Paragraph::new(self._message.text())
 			.block(block)

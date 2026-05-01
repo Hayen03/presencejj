@@ -165,3 +165,5 @@ pub fn read_string_option(msg: &str) -> Option<String> {
 		return Some(input);
 	}
 }
+
+pub type Logger<'a> = &'a dyn Fn(&str);

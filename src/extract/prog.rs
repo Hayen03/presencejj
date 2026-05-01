@@ -3,18 +3,19 @@ use std::str::FromStr;
 use console::{style, Term};
 use office::{DataType, Excel, Range};
 
-use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}};
+use crate::{data::{BoolJustifie, Genre, Taille, adresse::Adresse, cam::CAM, email::Email, tel::Tel}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{Date, Logger, O, print_option}};
 use crate::config::Config;
 
 use super::{excel::{into_int, into_string}, ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
 
-fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Result<Groupe, ExtractError> {
+pub fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig, saison: O<&str>) -> Result<Groupe, ExtractError> {
     let mut g = Groupe::default();
+    g.saison = saison.map(String::from);
     let grp_desc = match config.nom {
         Some(pos) => into_string(&ws[pos]),
-        None => None,
+        None => return Err(ExtractError::InvalidFormat),
     };
-    if grp_desc.is_none() {return Err(ExtractError::InvalidFormat);}
+    if grp_desc.is_none() {return Err(ExtractError::InvalidGroupNameFormat);}
     let grp_desc = grp_desc.unwrap();
     if let Some(cap) = GROUPE_RE.captures(&grp_desc) {
         g.activite = Some(cap.name("activite").unwrap().as_str().into());
@@ -47,12 +48,14 @@ fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Resul
                 g.category = Some(cap.name("category").unwrap().as_str().trim().into());
             }
         }
+    } else {
+        return Err(ExtractError::InvalidGroupNameFormat);
     }
     let grp_prog = match config.programmation {
         Some(pos) => into_string(&ws[pos]),
         None => None,
     };
-    g.saison = grp_prog;
+    g.saison = g.saison.or(grp_prog);
 
     g.capacite = match config.capacite {
         Some(pos) => into_int(&ws[pos]).map(|n| n as usize),
@@ -60,22 +63,29 @@ fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig) -> Resul
     };
     g.id = GroupeID(g.get_id_seed());
 
-    if g.activite.is_none() || g.saison.is_none() || g.activite.as_ref().unwrap().is_empty() || g.saison.as_ref().unwrap().is_empty() {
-        Err(ExtractError::NotAGroup)
+    let mut missing = vec![];
+    if g.activite.is_none() { missing.push("activité"); }
+    if g.saison.is_none() { missing.push("saison"); }
+
+    if !missing.is_empty() {
+        Err(ExtractError::NotAGroup {missing})
     } else {
         Ok(g)
     }
 }
 
-pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, err: &Term) {
+pub fn fill_groupe_reg(ws: &Range, reg: &mut GroupeReg, out: Logger, err: Logger) {
     let mut config = ProgLnConfig::default();
+    let mut saison = None;
     for (i, row) in ws.rows().enumerate() {
         //let _ = out.write_line(&format!("Reading {:?}", into_string(ws.get_value(i, 2))));
         if i == 0 {
+            saison = into_string(&row[0]);
+        } else if i == 1 {
             config = ProgLnConfig::guess(row);
-            println!("{:?}", config.programmation)
-        } else if let Ok(mut grp) = extract_group_info_from_prog(row, &config) {
-            let _ = out.write_line(&format!("LECTURE {desc}", desc=grp.desc()));
+            //println!("{:?}", config.programmation)
+        } else if let Ok(mut grp) = extract_group_info_from_prog(row, &config, saison.as_deref()) {
+            out(&format!("LECTURE {desc}", desc=grp.desc()));
 
             let cap = grp.capacite;
 
@@ -104,8 +114,12 @@ pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, er
     }
 }
 
+pub fn fill_groupe_reg_from_prog(ws: &Range, reg: &mut GroupeReg, out: &Term, err: &Term) {
+    fill_groupe_reg(ws, reg, &|s| { let _ = out.write_line(s); }, &|s| { let _ = err.write_line(s); });
+}
+
 #[derive(Debug, Clone, Copy, Hash)]
-struct ProgLnConfig {
+pub struct ProgLnConfig {
     programmation: O<usize>,
     activite: O<usize>,
     nom: O<usize>,
@@ -130,16 +144,46 @@ impl Default for ProgLnConfig {
     }
 }
 impl ProgLnConfig {
-    fn guess(range: &[DataType]) -> Self {
+    pub fn guess(range: &[DataType]) -> Self {
         Self {
-            programmation: Self::search(range, "Programmation"),
-            activite: Self::search(range, "Activité"),
-            nom: Self::search(range, "Groupe"),
-            debut: Self::search(range, "Début"),
-            fin: Self::search(range, "Fin"),
-            capacite: Self::search(range, "Nombre de place max"),
-            age_min: Self::search(range, "Restriction âge min."),
-            age_max: Self::search(range, "Restriction âge max."),
+            programmation: vec![
+                Self::search(range, "Programmation"),
+                Self::search(range, "Programmation\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            activite: vec![
+                Self::search(range, "Activité"),
+                Self::search(range, "Activité\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            nom: vec![
+                Self::search(range, "Groupe"),
+                Self::search(range, "Nom du groupe"),
+                Self::search(range, "Nom du groupe\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            debut: vec![
+                Self::search(range, "Début"),
+                Self::search(range, "Début du groupe"),
+                Self::search(range, "Début du groupe\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            fin: vec![
+                Self::search(range, "Fin"),
+                Self::search(range, "Fin du groupe"),
+                Self::search(range, "Fin du groupe\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            capacite: vec![
+                Self::search(range, "Nombre de place max"),
+                Self::search(range, "Nombre maximal de places"),
+                Self::search(range, "Nombre maximal de places\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            age_min: vec![
+                Self::search(range, "Restriction âge min."),
+                Self::search(range, "Restriction d'âge minimale"),
+                Self::search(range, "Restriction d'âge minimale\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
+            age_max: vec![
+                Self::search(range, "Restriction âge max."),
+                Self::search(range, "Restriction d'âge maximale"),
+                Self::search(range, "Restriction d'âge maximale\n"),
+            ].into_iter().find(|o| o.is_some()).flatten(),
         }
     }
     fn search(cols: &[DataType], trgt: &str) -> O<usize> {

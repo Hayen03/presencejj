@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, thread::JoinHandle};
+use std::sync::{Arc, Mutex};
 
 use ratatui::{layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Gauge, Paragraph, Widget, WidgetRef}};
 
@@ -123,9 +123,11 @@ impl WidgetRef for ProgressBar {
 				height: 1,
 			};
 			bar_block.render(bar_rect, buf);
+			let label = format!("{} / {}", progress, target);
 			Gauge::default()
 				//.block(bar_block)
 				.gauge_style(Style::new().white().on_black().italic())
+				.label(label)
 				.use_unicode(true)
 				.ratio(ratio)
 				.render(bar_area, buf);
@@ -172,4 +174,9 @@ impl crate::ui::Screen for ProgressBar {
 			_ => { Ok(crate::ui::UpdateAction::Continue) },
 		}
 	}
+}
+
+pub fn log(hook: &Mutex<Desc>, text: Desc) {
+	*hook.lock().expect("Poisoned Lock") = text;
+	//std::thread::sleep(Duration::from_millis(500));
 }

@@ -1,11 +1,6 @@
-use std::{any::Any, sync::{Arc, Mutex}, time::Duration};
+use std::sync::Arc;
 
-use crate::{extract::{ExtractError, excel::DataColConfig}, groupes::{comptes::CompteID, groupes::GroupeID, membres::MembreID}, ui::{AppState, UIError, screens::Desc}};
-
-fn log(hook: &Mutex<Desc>, text: Desc) {
-	*hook.lock().expect("Poisoned Lock") = text;
-	//std::thread::sleep(Duration::from_millis(500));
-}
+use crate::{extract::{ExtractError, excel::DataColConfig}, groupes::{comptes::CompteID, groupes::GroupeID, membres::MembreID}, ui::{AppState, UIError, screens::{Desc}}};
 
 pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let filepath = rfd::FileDialog::new()
@@ -26,36 +21,36 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 		};
 		let sheets = get_sheets(&mut workbook);
 
-		let screen = crate::ui::screens::ProgressBar::new(" Chargement des listes de présence ".into(), sheets.len() as u32);
-		let progress_hook = screen.get_progress_reference();
-		let cancel_hook = screen.get_cancel_reference();
-		let text_hook = screen.get_text_reference();
+		let screen = crate::ui::screens::ProgressLogScreen::new("Chargement des listes de présence".into(), sheets.len() as u32);
+		let progress_hook = screen.get_progress_hook();
+		let cancel_hook = screen.get_cancel_hook();
+		let log_hook = screen.get_logger();
 
 		let thread_handle: std::thread::JoinHandle<Result<(), UIError>> = std::thread::spawn(move || {
 			let mut dc: Option<DataColConfig> = None;
 			let logger = |err: &str| {
-				log(&text_hook, Desc::Error(err.into()));
+				log_hook.lock().expect("Poisoned Lock").log(Desc::Error(err.into()));
 			};
 			for sheet in sheets {
-				log(&text_hook, Desc::Info(format!("Lecture de la feuille '{}'", sheet)));
+				log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Lecture de la feuille '{}'", sheet)));
 
 				// early check for cancel
 				if *cancel_hook.lock().expect("Poisoned Lock") {
-					log(&text_hook, Desc::Warning("Importation annulée".into()));
+					log_hook.lock().expect("Poisoned Lock").log(Desc::Warning("Importation annulée".into()));
 					return Err(UIError::CancelAction { desc: "Importation annulée par l'utilisateur".into() });
 				}
 
 				let rng = match workbook.worksheet_range(&sheet) {
 					Ok(r) => r,
 					Err(e) => {
-						log(&text_hook, Desc::Error(format!("Erreur lors de la lecture de la feuille '{}': {}", sheet, e)));
+						log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur lors de la lecture de la feuille '{}': {}", sheet, e)));
 						continue;
 					},
 				};
 				let mut grp = match crate::extract::excel::extract_group_info(&rng) {
 					Ok(g) => g,
 					Err(e) => {
-						log(&text_hook, Desc::Error(format!("Erreur lors de l'extraction des données de la feuille '{}': {}", sheet, e)));
+						log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur lors de l'extraction des données de la feuille '{}': {}", sheet, e)));
 						continue;
 					},
 				};
@@ -66,12 +61,12 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 					let id = groupes.get_new_id_from_seed(grp.id.0);
 					grp.id = id;
 					if groupes.add(grp).is_ok() { // ignore error since we check for existing group before
-						log(&text_hook, Desc::Info(format!("Groupe ajouté avec l'ID: {}", id)));
+						log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Groupe ajouté avec l'ID: {}", id)));
 					}
 					id
 				} else {
 					// prendre le premier groupe (devrait être le seul)
-					log(&text_hook, Desc::Warning("Groupe déjà existant".into()));
+					log_hook.lock().expect("Poisoned Lock").log(Desc::Warning("Groupe déjà existant".into()));
 					existing_grps[0]
 				};
 
@@ -93,7 +88,7 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 					for (i, ln) in rows.enumerate() {
 						match crate::extract::excel::extract_compte_info(ln, dcc, Some(&logger)) {
 							Err(e) => {
-								log(&text_hook, Desc::Error(format!("Erreur en lisant le compte (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
+								log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur en lisant le compte (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
 							},
 							Ok(mut c) => {
 								// trouver si le compte existe déjà dans le groupe
@@ -104,7 +99,7 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 										let id = comptes.get_new_id_from_seed(c.id.0);
 										c.id = id;
 										if comptes.add(c).is_ok() { // ignore error since we check for existing compte before
-											log(&text_hook, Desc::Info(format!("Compte ajouté avec l'ID: {}", id)));
+											log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Compte ajouté avec l'ID: {}", id)));
 										}
 										id
 									} else {
@@ -115,7 +110,7 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 								// extraire les infos du membre
 								match crate::extract::excel::extract_membre_info(ln, dcc) {
 									Err(e) => {
-										log(&text_hook, Desc::Error(format!("Erreur en lisant le membre (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
+										log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur en lisant le membre (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
 										continue;
 									},
 									Ok(mut m) => {
@@ -128,7 +123,7 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 												m.id = id;
 												crate::extract::excel::fill_membre_info(ln, dcc, &mut m, Some(&logger));
 												if membres.add(m).is_ok() { // ignore error since we check for existing membre before
-													log(&text_hook, Desc::Info(format!("Membre ajouté avec l'ID: {}", id)));
+													log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Membre ajouté avec l'ID: {}", id)));
 													//std::thread::sleep(Duration::from_millis(500));
 												}
 												id
@@ -138,7 +133,7 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 										};
 										let membre = membres.get_mut(mid)?;
 										if let Err(e) = state.comptes.write().expect("Poisoned Lock").get_mut(cid)?.add_membre(membre) {
-											log(&text_hook, Desc::Error(format!("Erreur en ajoutant le membre au compte (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
+											log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur en ajoutant le membre au compte (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
 											continue;
 										}
 										grp.add_participant(mid);
@@ -155,14 +150,15 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 					*progress += 1;
 				}
 			}
+			log_hook.lock().expect("Poisoned Lock").log(Desc::Info("Terminé".into()));
 			Ok(())
 		});
 		let screen = screen.with_thread(thread_handle);
 
 
-		Ok(crate::ui::UpdateAction::PushSub(Box::new(screen) as Box<dyn crate::ui::Screen>))
+		Ok(crate::ui::UpdateAction::Push(Box::new(screen)))
 	} else {
-		Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) as Box<dyn Any + Send> }) as Box<dyn std::error::Error>))
+		Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) })))
 	}
 }
 
