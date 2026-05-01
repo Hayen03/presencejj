@@ -10,7 +10,7 @@ enum ErrorScreenContent<'a> {
 	Error(Box<dyn std::error::Error>),
 }
 impl ErrorScreenContent<'_> {
-	fn text(&self) -> Text {
+	fn text(&'_ self) -> Text<'_> {
 		match self {
 			ErrorScreenContent::Text(text) => text.clone(),
 			ErrorScreenContent::Error(err) => err.to_text(),
