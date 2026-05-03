@@ -25,17 +25,23 @@ impl<'a> InfoScreen<'a> {
 }
 impl<'a> WidgetRef for InfoScreen<'a> {
 	fn render_ref(&self, rect: Rect, buf: &mut Buffer) {
+		let title = Line::from(format!(" {} ", self.title)).centered().yellow();
+		let title_width: u16 = (title.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
+		let instruction = Line::from(" Appuyez sur Entrée pour continuer. ").centered().gray();
+		let instruction_width: u16 = (instruction.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
+		let title_width = title_width.max(instruction_width);
+
 		let max_width = match self.size.0 {
 			ScreenSize::Fill => rect.width,
 			ScreenSize::Length(l) => l,
 			ScreenSize::Ratio(r) => (rect.width as f32 * r).floor() as u16,
-			ScreenSize::Fit {min, max} => { (self.prefered_width + 2).clamp(min, max) },
+			ScreenSize::Fit {min, max} => { (self.prefered_width.saturating_add(2)).max(title_width).clamp(min, max) },
 		}.min(rect.width);
 		let tmp_area = rect.centered(ratatui::layout::Constraint::Max(max_width), ratatui::layout::Constraint::Length(rect.height));
 
 		let block = Block::bordered()
-			.title_top(Line::from(format!(" {} ", self.title)).centered().yellow())
-			.title_bottom(Line::from(" Appuyez sur Entrée pour fermer ").centered().gray())
+			.title_top(title)
+			.title_bottom(instruction)
 			.border_set(border::THICK)
 			.border_style(Style::new().yellow())
 			.bg(Color::Black);

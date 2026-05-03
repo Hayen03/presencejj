@@ -78,7 +78,7 @@ pub fn calcul_chandail(groupes: &GroupeReg, membres: &MembreReg) -> HashMap<Tail
     res
 }
 
-pub fn calcul_chandail_complex(groupes: &GroupeReg, membres: &MembreReg, prediction: &HashMap<Taille, usize>) -> HashMap<Taille, usize> {
+pub fn calcul_chandail_complex(groupes: &GroupeReg, membres: &MembreReg, prediction: &HashMap<String, usize>) -> HashMap<Taille, usize> {
     let mut chandails_cat: HashMap<String, ChandailCalcul> = HashMap::new();
     let mut tried = BTreeSet::new();
     for groupe in groupes.groupes() {
@@ -99,8 +99,8 @@ pub fn calcul_chandail_complex(groupes: &GroupeReg, membres: &MembreReg, predict
 
     for (cat, cc) in chandails_cat {
         let total = cc.total() as f32;
+        let cap = prediction.get(&cat).copied().unwrap_or(0) as f32;
         for t in Taille::tailles() {
-            let cap = *prediction.get(t).unwrap_or(&0) as f32;
             if total > 0.0 {
                 if cap > 0.0 {
                     let f: f32 = *cc.comptes.get(t).unwrap() as f32 / total;

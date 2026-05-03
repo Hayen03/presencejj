@@ -52,20 +52,24 @@ impl<'a> ErrorScreen<'a> {
 }
 impl WidgetRef for ErrorScreen<'_> {
 	fn render_ref(&self, area:ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+		let title = Line::from(" Une erreur est survenue! ").centered().red();
+		let title_width: u16 = (title.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
+		let instruction = Line::from(" Appuyez sur Entrée pour continuer. ").centered().gray();
+		let instruction_width: u16 = (instruction.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
+		let title_width = title_width.max(instruction_width);
+
 		// find the dims of the box we want to render the error message in, with some padding
 		let box_width = match crate::ui::Theme::DARK.max_error_box_width {
 			ScreenSize::Fill => area.width,
 			ScreenSize::Length(l) => l,
 			ScreenSize::Ratio(r) => (area.width as f32 * r).floor() as u16,
 			ScreenSize::Fit {min, max} => {
-				self.prefered_width.clamp(min, max)
+				self.prefered_width.max(title_width).clamp(min, max)
 			},
 		};
 		let tmp_area = area.centered(ratatui::layout::Constraint::Max(box_width), ratatui::layout::Constraint::Length(area.height));
 		//let box_height = crate::ui::Theme::DARK.max_error_box_height.min(area.height);
 		//let box_area = area.centered(ratatui::layout::Constraint::Length(box_width), ratatui::layout::Constraint::Length(box_height));
-		let title = Line::from(" Une erreur est survenue! ").centered().red();
-		let instruction = Line::from(" Appuyez sur Entrée pour continuer. ").centered().gray();
 		let block = ratatui::widgets::Block::bordered()
 			.title(title)
 			.title_bottom(instruction)

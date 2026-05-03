@@ -256,6 +256,9 @@ impl GroupeReg {
     pub fn len(&self) -> usize {
         self.reg.len()
     }
+    pub fn list_used_category(&self) -> HashSet<String> {
+        self.reg.values().filter_map(|g| g.category.clone()).collect()
+    }
 }
 
 pub fn rank_points(rank: usize) -> u32 {

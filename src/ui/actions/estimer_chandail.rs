@@ -4,7 +4,7 @@ use ratatui::{buffer::Buffer, layout::Rect, style::{Style, Stylize}, symbols::bo
 
 use crossterm::event as cte;
 
-use crate::{data::Taille, ui::{AppState, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{InfoScreen, LineInputScreen, Menu, MenuItem}}};
+use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, Poll, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{InfoScreen, LineInputScreen, Menu, MenuItem}}};
 
 pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let menu_size = {
@@ -17,18 +17,56 @@ pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResul
 	};
 	let chandail_mode_menu = Menu::new(vec![
 		MenuItem { id: EstimeChandailMethod::Simple, action: Box::new(move |state| {
-			let info_box = InfoScreen::new(
-				"Résultat".into(),
-				Text::from("Vous avez choisi la méthode simple"),
-			).with_size(info_size.0, info_size.1);
-			Ok(UpdateAction::ReplaceSub(Box::new(info_box)).one())
+			let screen = ChandailScreen::default();
+			let cancel_hook = screen.get_cancel_hook();
+			let thread_handle = std::thread::spawn(move || {
+				let groupes = state.groupes.read().expect("Poisoned Lock");
+				let membres = state.membres.read().expect("Poisoned Lock");
+				Ok(calcul_chandail(&groupes, &membres))
+			});
+			Ok(vec![UpdateAction::Pop, UpdateAction::Push(Box::new(screen.with_thread(thread_handle)))])
 		}) },
 		MenuItem { id: EstimeChandailMethod::Complexe, action: Box::new(move |state| {
-			let info_box = InfoScreen::new(
-				"Résultat".into(),
-				Text::from("Vous avez choisi la méthode complexe"),
-			).with_size(info_size.0, info_size.1);
-			Ok(UpdateAction::ReplaceSub(Box::new(info_box)).one())
+			let screen = ChandailScreen::default();
+			let cancel_hook = screen.get_cancel_hook();
+			let thread_handle = std::thread::spawn(move || {
+				// gather the estimations from the user for each group category
+				let cats = state.groupes.read().expect("Poisoned Lock").list_used_category();
+				let mut estimations: HashMap<String, usize> = HashMap::new();
+				let validation_fn = Arc::new(|s: &str| s.parse::<usize>().is_ok());
+				for cat in cats {
+					// early cancel if requested
+					if *cancel_hook.lock().expect("Poisoned Lock") {
+						return Ok(HashMap::new());
+					}
+
+					let prompt = format!("Estimation pour la catégorie '{}': ", cat);
+					let poll = Poll {
+						title: "Estimation de nombre de chandails".into(),
+						prompt: Text::from(prompt),
+						validation: Some(validation_fn.clone()),
+						show_error: false,
+					}.poll(state.clone());
+					match poll {
+						Err(e) => {
+							// receiving failed, show error and quit action
+							return Err(UIError::Runtime { src: Box::new(e) });
+						},
+						Ok(None) => {
+							// user cancelled, stop the action but don't show an error
+							return Ok(HashMap::new());
+						},
+						Ok(Some(s)) => {
+							estimations.insert(cat.clone(), s.parse::<usize>().expect("Validation should have prevented this"));
+						},
+					}
+				}
+
+				let groupes = state.groupes.read().expect("Poisoned Lock");
+				let membres = state.membres.read().expect("Poisoned Lock");
+				Ok(calcul_chandail_complex(&groupes, &membres, &estimations))
+			});
+			Ok(vec![UpdateAction::Pop, UpdateAction::Push(Box::new(screen.with_thread(thread_handle)))])
 		}) },
 	].into_boxed_slice())
 		.with_title("Mode d'estimation".into())
@@ -59,14 +97,14 @@ impl std::fmt::Display for EstimeChandailMethod {
 #[derive(Default, Debug)]
 struct ChandailScreen {
 	cancel_hook: Arc<Mutex<bool>>,
-	results: Option<HashMap<Taille, usize>>,
-	thread_handle: Option<std::thread::JoinHandle<HashMap<Taille, usize>>>,
+	results: Option<Vec<(Taille, usize)>>,
+	thread_handle: Option<std::thread::JoinHandle<Result<HashMap<Taille, usize>, UIError>>>,
 }
 impl ChandailScreen {
 	fn get_cancel_hook(&self) -> Arc<Mutex<bool>> {
 		self.cancel_hook.clone()
 	}
-	fn with_thread(mut self, thread_handle: std::thread::JoinHandle<HashMap<Taille, usize>>) -> Self {
+	fn with_thread(mut self, thread_handle: std::thread::JoinHandle<Result<HashMap<Taille, usize>, UIError>>) -> Self {
 		self.thread_handle = Some(thread_handle);
 		self
 	}
@@ -157,8 +195,13 @@ impl Screen for ChandailScreen {
 							Err(e) => {
 								return Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: e })).one());
 							},
-							Ok(hash_map) => {
-								self.results = Some(hash_map);
+							Ok(Ok(hash_map)) => {
+								let mut results = hash_map.into_iter().collect::<Vec<_>>();
+								results.sort_by(|a, b| a.cmp(b));
+								self.results = Some(results);
+							},
+							Ok(Err(e)) => {
+								return Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(e)).one());
 							},
 						}
 					}

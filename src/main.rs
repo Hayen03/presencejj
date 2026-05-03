@@ -549,9 +549,9 @@ fn estimation_chandail(program: &ProgramData) -> Result<(), ()> {
         EstimationChandailMode::Simple => crate::stats::calcul_chandail(&program.groupes, &program.membres),
         EstimationChandailMode::Complex => {
             let mut pred = HashMap::new();
-            for cat in Taille::tailles() {
+            for cat in program.groupes.list_used_category() {
                 let cap: usize = read_int(&format!("Nombre prévu de {}", cat)) as usize;
-                pred.insert(*cat, cap);
+                pred.insert(cat, cap);
             }
             crate::stats::calcul_chandail_complex(&program.groupes, &program.membres, &pred)
         },
