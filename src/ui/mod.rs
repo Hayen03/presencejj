@@ -195,6 +195,7 @@ pub enum UpdateAction {
 	ReplaceSub(Box<dyn Screen>),
 	ErrorPopUp(Box<dyn std::error::Error>),
 	ErrorReplace(Box<dyn std::error::Error>),
+	Bell,
 }
 impl UpdateAction {
 	pub fn one(self) -> Vec<Self> {
@@ -329,9 +330,9 @@ impl<'a> PollRequest<'a> {
 						} else {
 							// invalid input
 							if self.data.show_error {
-								Ok(UpdateAction::ErrorPopUp(Box::new(UIError::msg("Input invalide"))).one())
+								Ok(vec![UpdateAction::Bell, UpdateAction::ErrorPopUp(Box::new(UIError::msg("Input invalide")))])
 							} else {
-								Ok(UpdateAction::Continue.one())
+								Ok(vec![UpdateAction::Bell, UpdateAction::Continue])
 							}
 						}
 					} else { // no validation required, send the result to answer_to

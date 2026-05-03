@@ -110,6 +110,7 @@ fn guess_nb_sous_groupes(grp: &Groupe) -> Option<usize> {
         (Some("crocus"), i) => { // crocus -> 10 par groupes
             Some((i as f32/10.0).ceil() as usize)
         },
+		
         (Some("balaous"), i) => { // balaous -> 12 par groupes
             Some((i as f32/12.0).ceil() as usize)
         },
@@ -119,6 +120,7 @@ fn guess_nb_sous_groupes(grp: &Groupe) -> Option<usize> {
         (Some("12-15 ans"), i) => {
             Some((i as f32/15.0).ceil() as usize)
         },
+		
         (_c, _) => { // inconnu, on doit demander
             None
         },

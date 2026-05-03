@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, io::Write, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{Frame, Terminal, buffer::Buffer, layout::Rect, prelude::CrosstermBackend, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Paragraph, StatefulWidgetRef, Widget, WidgetRef}};
@@ -183,6 +183,13 @@ impl App {
 				self.sub_screen_stack.push(Box::new(ErrorScreen::from_error(err)));
 				Ok(true)
 			},
+			UpdateAction::Bell => {
+				// no bell yet, maybe in the future
+				let mut stderr = std::io::stderr();
+				let _ = stderr.write_all(b"\x07");
+				let _ = stderr.flush();
+				Ok(true)
+			}
 		}
 	}
 
