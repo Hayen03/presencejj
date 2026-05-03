@@ -10,7 +10,7 @@ use office::Excel;
 use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
 
-use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::{RegError, comptes::{CompteErr, CompteID}, groupes::GroupeID, membres}, ui::{UIError, app::App, event::{EventError, EventHandler}, tui::{self, Tui, TuiError}}};
+use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::{RegError, comptes::{CompteErr, CompteID}, groupes::GroupeID, membres}, ui::{TextInputError, UIError, app::App, event::{EventError, EventHandler}, tui::{self, Tui, TuiError}}};
 
 pub mod data;
 pub mod extract;
@@ -129,6 +129,7 @@ enum AppError {
     MembreRegistry { src: RegError<MembreID> },
     CancelAction { desc: String },
     Compte { src: CompteErr },
+    Input { src: TextInputError },
 }
 impl From<UIError> for AppError {
     fn from(_src: UIError) -> Self {
@@ -142,6 +143,7 @@ impl From<UIError> for AppError {
             UIError::MembreRegistry { src } => AppError::MembreRegistry { src },
             UIError::CancelAction { desc } => AppError::CancelAction { desc },
             UIError::Compte { src } => AppError::Compte { src },
+            UIError::Input { src } => AppError::Input { src },
         }
     }
 }

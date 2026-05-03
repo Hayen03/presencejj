@@ -78,3 +78,15 @@ impl EventHandler {
 		Ok(self.receiver.recv()?)
 	}
 }
+impl From<Event> for ratatui_textarea::Input {
+	fn from(value: Event) -> Self {
+		if let Event::Key(key) = value {
+			let shift = key.modifiers.contains(cte::KeyModifiers::SHIFT);
+			let ctrl = key.modifiers.contains(cte::KeyModifiers::CONTROL);
+			let alt = key.modifiers.contains(cte::KeyModifiers::ALT);
+			ratatui_textarea::Input { key: key.code.into(), ctrl, alt, shift }
+		} else {
+			ratatui_textarea::Input { key: ratatui_textarea::Key::Null, ctrl: false, alt: false, shift: false }
+		}
+	}
+}

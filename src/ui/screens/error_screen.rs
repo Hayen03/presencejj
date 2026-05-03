@@ -61,25 +61,25 @@ impl WidgetRef for ErrorScreen<'_> {
 	}
 }
 impl Screen for ErrorScreen<'_> {
-	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<AppState>) -> Result<crate::ui::UpdateAction, crate::ui::UIError> {
+	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<AppState>) -> Result<crate::ui::UpdateActions, crate::ui::UIError> {
 		match event {
 			crate::ui::event::Event::Key(key) => {
 				match key.code {
-					crossterm::event::KeyCode::Esc | crossterm::event::KeyCode::Enter => { Ok(crate::ui::UpdateAction::Pop) },
+					crossterm::event::KeyCode::Esc | crossterm::event::KeyCode::Enter => { Ok(crate::ui::UpdateAction::Pop.one()) },
 					crossterm::event::KeyCode::Up => {
 						if self.scroll > 0 {
 							self.scroll -= 1;
 						}
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
 					crossterm::event::KeyCode::Down => {
 						self.scroll += 1;
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
-					_ => { Ok(crate::ui::UpdateAction::Continue) },
+					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 				}
 			},
-			_ => { Ok(crate::ui::UpdateAction::Continue) },
+			_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 		}
 	}
 }

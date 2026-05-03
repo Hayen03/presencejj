@@ -15,5 +15,5 @@ pub fn afficher_donnees(state: Arc<AppState>) -> crate::ui::actions::ActionResul
 	};
 	let screen = crate::ui::screens::InfoScreen::new(title, text, size);
 
-	Ok(crate::ui::UpdateAction::PushSub(Box::new(screen)))
+	Ok(crate::ui::UpdateAction::PushSub(Box::new(screen)).one())
 }

@@ -103,7 +103,7 @@ impl Groupe {
         // nombre de participants par sous_groupe
         let sg_size = ((candidats.len() as f32)/(nb_sg as f32)).ceil() as usize;
 
-        println!("Forme {} sous-groupe de {} pour {}", nb_sg, sg_size, self.short_desc());
+        //println!("Forme {} sous-groupe de {} pour {}", nb_sg, sg_size, self.short_desc());
 
         // création des sous groupes
         for disc in 1..=nb_sg {

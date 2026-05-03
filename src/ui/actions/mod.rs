@@ -26,7 +26,8 @@ pub use imprimer_fiche_sante::imprimer_fiche_sante;
 pub use imprimer_liste_presence::imprimer_liste_presence;
 pub use imprimer_stats::imprimer_stats;
 
-pub type ActionResult = Result<UpdateAction, UIError>;
+pub type UpdateActions = Vec<UpdateAction>;
+pub type ActionResult = Result<UpdateActions, UIError>;
 pub type Action = dyn Fn(Arc<AppState>) -> ActionResult;
 
 #[derive(Debug, Default, Clone, Copy)]

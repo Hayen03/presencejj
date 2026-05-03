@@ -17,15 +17,15 @@ pub fn charger_de_prog(state: Arc<AppState>) -> crate::ui::actions::ActionResult
 
 		let mut workbook = match office::Excel::open(filepath) {
 			Ok(wb) => wb,
-			Err(e) => return Ok(UpdateAction::ErrorPopUp(Box::new(UIError::from(e)))),
+			Err(e) => return Ok(UpdateAction::ErrorPopUp(Box::new(UIError::from(e))).one()),
 		};
 		let rng = match workbook.worksheet_range("Groupes") {
 			Ok(r) => r,
-			Err(e) => return Ok(UpdateAction::ErrorPopUp(Box::new(UIError::from(e)))),
+			Err(e) => return Ok(UpdateAction::ErrorPopUp(Box::new(UIError::from(e))).one()),
 		};
 		let l = rng.get_size().0.max(2) - 2; // there's two lines before the data starts, and we want to count the number of lines of data, not the total number of lines. Usage of max() is to avoid underflow in case there are less than 2 lines in the sheet, which would result in a negative number of lines of data.
 		if l == 0 || rng.get_size().1 < 2 {
-			return Ok(UpdateAction::ErrorPopUp(ExtractError::InvalidFormat.into()));
+			return Ok(UpdateAction::ErrorPopUp(ExtractError::InvalidFormat.into()).one());
 		}
 		let saison = into_string(&rng.rows().next().unwrap()[0]);
 		let config = crate::extract::prog::ProgLnConfig::guess(rng.rows().nth(1).unwrap());
@@ -92,8 +92,8 @@ pub fn charger_de_prog(state: Arc<AppState>) -> crate::ui::actions::ActionResult
 		});
 		let screen = screen.with_thread(thread_handle);
 
-		return Ok(UpdateAction::Push(Box::new(screen) as Box<dyn crate::ui::Screen>));
+		return Ok(UpdateAction::Push(Box::new(screen) as Box<dyn crate::ui::Screen>).one());
 	}
 
-	Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) }) as Box<dyn std::error::Error>))
+	Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) }) as Box<dyn std::error::Error>).one())
 }

@@ -1,14 +1,29 @@
-use std::{any::Any, path::{Path, PathBuf}, sync::{Arc, RwLock}};
+use std::{any::Any, collections::VecDeque, path::{Path, PathBuf}, sync::{Arc, RwLock}};
 
 use ratatui::{Frame, style::Color};
 
-use crate::{extract::ExtractError, groupes::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}};
+use crate::{extract::ExtractError, groupes::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, ui::{actions::UpdateActions, event::Event}};
 
 pub mod app;
 pub mod tui;
 pub mod event;
 pub mod actions;
 pub mod screens;
+
+#[derive(Debug)]
+pub enum TextInputError {
+	InvalidInput(String),
+	NoInput,
+}
+impl std::fmt::Display for TextInputError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			TextInputError::InvalidInput(desc) => write!(f, "Invalid input: {}", desc),
+			TextInputError::NoInput => write!(f, "No input provided"),
+		}
+	}
+}
+impl std::error::Error for TextInputError {}
 
 #[derive(Debug)]
 pub enum UIError {
@@ -21,6 +36,7 @@ pub enum UIError {
 	MembreRegistry { src: RegError<MembreID> },
 	CancelAction{ desc: String },
 	Compte { src: CompteErr },
+	Input { src: TextInputError },
 }
 impl From<std::io::Error> for UIError {
 	fn from(src: std::io::Error) -> Self {
@@ -69,6 +85,11 @@ impl From<CompteErr> for UIError {
 		UIError::Compte { src: value }
 	}
 }
+impl From<TextInputError> for UIError {
+	fn from(value: TextInputError) -> Self {
+		UIError::Input { src: value }
+	}
+}
 impl std::fmt::Display for UIError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -91,10 +112,16 @@ impl std::fmt::Display for UIError {
 			UIError::MembreRegistry { src } => write!(f, "Membre registry error: {}", src),
 			UIError::CancelAction { desc } => write!(f, "Action cancelled: {}", desc),
 			UIError::Compte { src } => write!(f, "Compte error: {}", src),
+			UIError::Input { src } => write!(f, "Input error: {}", src),
 		}
 	}
 }
 impl std::error::Error for UIError {}
+impl UIError {
+	pub fn msg(msg: &str) -> Self {
+		UIError::Runtime { src: Box::new(msg.to_string()) }
+	}
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Theme {
@@ -142,11 +169,22 @@ pub enum UpdateAction {
 	ErrorPopUp(Box<dyn std::error::Error>),
 	ErrorReplace(Box<dyn std::error::Error>),
 }
+impl UpdateAction {
+	pub fn one(self) -> Vec<Self> {
+		vec![self]
+	}
+	pub fn empty() -> Vec<Self> {
+		vec![]
+	}
+}
 
 pub trait Screen where Self: ratatui::widgets::WidgetRef + std::fmt::Debug {
-	fn handle_event(&mut self, event: event::Event, state: Arc<AppState>) -> Result<UpdateAction, UIError>;
+	fn handle_event(&mut self, event: event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError>;
 	fn render_focus(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer, focus: bool) {
 		self.render_ref(area, buf);
+	}
+	fn background_update(&mut self, event: Event) -> Result<UpdateActions, UIError> {
+		Ok(UpdateAction::Continue.one())
 	}
 }
 
@@ -159,6 +197,7 @@ pub struct AppState {
 	pub comptes: RwLock<CompteReg>,
 	pub membres: RwLock<MembreReg>,
 	pub theme: RwLock<Theme>,
+	//pub action_queue: RwLock<VecDeque<UpdateAction>>,
 }
 impl Default for AppState {
 	fn default() -> Self {
@@ -178,6 +217,7 @@ impl Default for AppState {
 			comptes: RwLock::new(comptes),
 			membres: RwLock::new(membres),
 			theme: RwLock::new(Theme::DARK),
+			//action_queue: RwLock::new(VecDeque::new()),
 		}
 	}
 }

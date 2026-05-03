@@ -3,7 +3,7 @@ use std::{fmt::Debug, sync::Arc};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{Frame, Terminal, buffer::Buffer, layout::Rect, prelude::CrosstermBackend, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Paragraph, StatefulWidgetRef, Widget, WidgetRef}};
 
-use crate::ui::{AppState, Screen, Theme, UIError, UpdateAction, event::{self, Event}, screens::ErrorScreen, tui::Tui};
+use crate::ui::{AppState, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::{self, Event}, screens::ErrorScreen, tui::Tui};
 use crate::ui::actions;
 
 pub struct MenuItem<Ids> where Ids: ToString + Debug {
@@ -72,26 +72,26 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 		self
 	}
 
-	fn handle_key(&mut self, event: KeyEvent, state: Arc<AppState>) -> Result<UpdateAction, UIError> {
+	fn handle_key(&mut self, event: KeyEvent, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
 		match event.code {
 			KeyCode::Up => {
 				self.previous();
-				Ok(UpdateAction::Continue)
+				Ok(UpdateAction::Continue.one())
 			},
 			KeyCode::Down => {
 				self.next();
-				Ok(UpdateAction::Continue)
+				Ok(UpdateAction::Continue.one())
 			},
-			KeyCode::Esc => Ok(UpdateAction::Quit),
+			KeyCode::Esc => Ok(UpdateAction::Quit.one()),
 			KeyCode::Enter => {
 				if let Some(item) = self.get_selected() {
 					let result = (item.action)(state)?;
 					Ok(result)
 				} else {
-					Ok(UpdateAction::Continue)
+					Ok(UpdateAction::Continue.one())
 				}
 			},
-			_ => Ok(UpdateAction::Continue),
+			_ => Ok(UpdateAction::Continue.one()),
 		}
 	}
 }
@@ -104,10 +104,10 @@ impl<'a, Ids> WidgetRef for Menu<'a, Ids> where Ids: ToString + Debug {
 	}
 }
 impl<'a, Ids> Screen for Menu<'a, Ids> where Ids: ToString + Debug {
-	fn handle_event(&mut self, event: event::Event, state: Arc<AppState>) -> Result<UpdateAction, UIError> {
+	fn handle_event(&mut self, event: event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
 		match event  {
 			event::Event::Key(ke) => self.handle_key(ke, state),
-			_ => Ok(UpdateAction::Continue),
+			_ => Ok(UpdateAction::Continue.one()),
 		}
 	}
 	fn render_focus(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer, focus: bool) {
@@ -165,7 +165,19 @@ impl App {
 	pub fn run(mut self, terminal: &mut Tui) -> Result<(), UIError> {
 		loop {
 			terminal.draw(&self)?;
-			match self.update(terminal.events.next()?) {
+			let event = terminal.events.next()?;
+			match self.update(event) {
+				Ok(cont) => {
+					if !cont || self.should_quit {
+						return Ok(());
+					}
+				},
+				Err(err) => {
+					return Err(err);
+				}
+			}
+			// update non-focused screens
+			match self.background_update(event) {
 				Ok(cont) => {
 					if !cont || self.should_quit {
 						return Ok(());
@@ -185,7 +197,7 @@ impl App {
 			(None, None) => &mut self.main_menu,
 		}
 	}
-	fn update_current_screen(&mut self, event: Event) -> Result<UpdateAction, UIError> {
+	fn update_current_screen(&mut self, event: Event) -> Result<UpdateActions, UIError> {
 		let current_screen = match (self.stack.last_mut(), self.sub_screen_stack.last_mut()) {
 			(_, Some(sub_screen)) => sub_screen.as_mut(),
 			(Some(screen), None) => screen.as_mut(),
@@ -205,8 +217,45 @@ impl App {
 * update fn for the main loop. Returns None if the app should continue, or Some(Result<(), UIError>) if the app is done and should return the result.
 */
 	fn update(&mut self, event: Event) -> Result<bool, UIError> {
-		let event_result = self.update_current_screen(event)?;
-		match event_result {
+		let events = self.update_current_screen(event)?;
+		for event in events {
+			match self.handle_update_action(event) {
+				Ok(true) => continue,
+				res => return res,
+			}
+		}
+		Ok(true)
+	}
+
+	fn background_update(&mut self, event: Event) -> Result<bool, UIError> {
+		let n_popup = self.sub_screen_stack.len();
+		for i in 0..(n_popup.saturating_sub(1)) { // skip the last popup as it is the one who has focus
+			let screen = self.sub_screen_stack.get_mut(i).expect("Index should be in bound");
+			let results = screen.background_update(event)?;
+			for res in results { // early stopping
+				match self.handle_update_action(res) {
+					Ok(true) => continue,
+					res => return res,
+				}
+			}
+		}
+		// do the same for the main screens
+		let screen_range = 0..(if n_popup > 0 { self.stack.len() } else { self.stack.len().saturating_sub(1) });
+		for i in screen_range {
+			let screen = self.stack.get_mut(i).expect("Index should be in bound");
+			let results = screen.background_update(event)?;
+			for res in results { // early stopping
+				match self.handle_update_action(res) {
+					Ok(true) => continue,
+					res => return res,
+				}
+			}
+		}
+		Ok(true)
+	}
+
+	fn handle_update_action(&mut self, update_action: UpdateAction) -> Result<bool, UIError> {
+		match update_action {
 			UpdateAction::Continue => Ok(true),
 			UpdateAction::Quit => Ok(false),
 			UpdateAction::Pop => {
@@ -250,6 +299,7 @@ impl App {
 	pub fn quit(&mut self) {
 		self.should_quit = true;
 	}
+
 }
 
 impl Widget for &App {

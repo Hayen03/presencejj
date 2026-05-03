@@ -138,19 +138,19 @@ impl WidgetRef for ProgressBar {
 	}
 }
 impl crate::ui::Screen for ProgressBar {
-	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<AppState>) -> Result<crate::ui::UpdateAction, crate::ui::UIError> {
+	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<AppState>) -> Result<crate::ui::UpdateActions, crate::ui::UIError> {
 		match event {
 			crate::ui::event::Event::Key(key) => {
 				match key.code {
 					crossterm::event::KeyCode::Esc => {
 						let thread_result = self.cancel();
 						if let Err(err) = thread_result {
-							return Ok(crate::ui::UpdateAction::ErrorReplace(err));
+							return Ok(crate::ui::UpdateAction::ErrorReplace(err).one());
 						}
-						Ok(crate::ui::UpdateAction::Pop)
+						Ok(crate::ui::UpdateAction::Pop.one())
 					},
-					crossterm::event::KeyCode::Enter if self.is_done() => Ok(crate::ui::UpdateAction::Pop),
-					_ => Ok(crate::ui::UpdateAction::Continue),
+					crossterm::event::KeyCode::Enter if self.is_done() => Ok(crate::ui::UpdateAction::Pop.one()),
+					_ => Ok(crate::ui::UpdateAction::Continue.one()),
 				}
 			},
 			crate::ui::event::Event::Tick => {
@@ -159,19 +159,19 @@ impl crate::ui::Screen for ProgressBar {
 					if thread_completed {
 						let thread_result = self.thread_handle.take().unwrap().join();
 						if let Err(err) = thread_result {
-							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })))
+							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one())
 						} else {
 							self.set_progress(self.get_target());
-							Ok(crate::ui::UpdateAction::Continue)
+							Ok(crate::ui::UpdateAction::Continue.one())
 						}
 					} else {
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					}
 				} else {
-					Ok(crate::ui::UpdateAction::Continue)
+					Ok(crate::ui::UpdateAction::Continue.one())
 				}
 			},
-			_ => { Ok(crate::ui::UpdateAction::Continue) },
+			_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 		}
 	}
 }

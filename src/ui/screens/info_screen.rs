@@ -39,25 +39,39 @@ impl<'a> WidgetRef for InfoScreen<'a> {
 	}
 }
 impl<'a> Screen for InfoScreen<'a> {
-	fn handle_event(&mut self, event: crate::ui::event::Event, state: std::sync::Arc<crate::ui::AppState>) -> Result<crate::ui::UpdateAction, crate::ui::UIError> {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: std::sync::Arc<crate::ui::AppState>) -> Result<crate::ui::UpdateActions, crate::ui::UIError> {
 		match event {
 			crate::ui::event::Event::Key(key) => {
 				use crossterm::event::KeyCode;
 				match key.code {
-					KeyCode::Enter => { Ok(crate::ui::UpdateAction::Pop) },
-					KeyCode::Esc => { Ok(crate::ui::UpdateAction::Pop) },
+					KeyCode::Enter => { Ok(crate::ui::UpdateAction::Pop.one()) },
+					KeyCode::Esc => { Ok(crate::ui::UpdateAction::Pop.one()) },
 					KeyCode::Up => {
 						self.scroll = self.scroll.saturating_sub(1);
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
 					KeyCode::Down => {
 						self.scroll = self.scroll.saturating_add(1);
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
-					_ => { Ok(crate::ui::UpdateAction::Continue) },
+					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 				}
 			},
-			_ => { Ok(crate::ui::UpdateAction::Continue) },
+			crate::ui::event::Event::Mouse(mouse) => {
+				use crossterm::event::MouseEventKind;
+				match mouse.kind {
+					MouseEventKind::ScrollUp => {
+						self.scroll = self.scroll.saturating_sub(1);
+						Ok(crate::ui::UpdateAction::Continue.one())
+					},
+					MouseEventKind::ScrollDown => {
+						self.scroll = self.scroll.saturating_add(1);
+						Ok(crate::ui::UpdateAction::Continue.one())
+					},
+					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
+				}
+			},
+			_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 		}
 	}
 }

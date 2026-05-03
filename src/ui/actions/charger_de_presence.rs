@@ -156,9 +156,9 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 		let screen = screen.with_thread(thread_handle);
 
 
-		Ok(crate::ui::UpdateAction::Push(Box::new(screen)))
+		Ok(crate::ui::UpdateAction::Push(Box::new(screen)).one())
 	} else {
-		Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) })))
+		Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) })).one())
 	}
 }
 

@@ -114,7 +114,7 @@ impl WidgetRef for ProgressLogScreen {
 	}
 }
 impl Screen for ProgressLogScreen {
-	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<crate::ui::AppState>) -> Result<crate::ui::UpdateAction, crate::ui::UIError> {
+	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<crate::ui::AppState>) -> Result<crate::ui::UpdateActions, crate::ui::UIError> {
 		match event {
 			crate::ui::event::Event::Key(key) => {
 				use crossterm::event::KeyCode;
@@ -123,20 +123,20 @@ impl Screen for ProgressLogScreen {
 						*self.cancel_hook.lock().expect("Poisoned Lock") = true;
 						let thread_result = self.thread_handle.take().map(|th| th.join());
 						match thread_result {
-							None => Ok(crate::ui::UpdateAction::Pop), // no thread
-							Some(Ok(Ok(()))) => Ok(crate::ui::UpdateAction::Pop), // thread completed successfully
-							Some(Err(err)) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err }))), // thread panicked
-							Some(Ok(Err(err))) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err))), // thread completed with error
+							None => Ok(crate::ui::UpdateAction::Pop.one()), // no thread
+							Some(Ok(Ok(()))) => Ok(crate::ui::UpdateAction::Pop.one()), // thread completed successfully
+							Some(Err(err)) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one()), // thread panicked
+							Some(Ok(Err(err))) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err)).one()), // thread completed with error
 						}
 					},
 					KeyCode::Enter if self.is_done() => {
 						// make sure the thread is completed
 						let thread_result = self.thread_handle.take().map(|th| th.join());
 						match thread_result {
-							None => Ok(crate::ui::UpdateAction::Pop), // no thread
-							Some(Ok(Ok(()))) => Ok(crate::ui::UpdateAction::Pop), // thread completed successfully
-							Some(Err(err)) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err }))), // thread panicked
-							Some(Ok(Err(err))) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err))), // thread completed with error
+							None => Ok(crate::ui::UpdateAction::Pop.one()), // no thread
+							Some(Ok(Ok(()))) => Ok(crate::ui::UpdateAction::Pop.one()), // thread completed successfully
+							Some(Err(err)) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one()), // thread panicked
+							Some(Ok(Err(err))) => Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err)).one()), // thread completed with error
 						}
 					},
 					KeyCode::Up => {
@@ -146,7 +146,7 @@ impl Screen for ProgressLogScreen {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_sub(1)));
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
 					KeyCode::Down => {
 						// switch to manual scroll and decrease scroll
@@ -155,9 +155,9 @@ impl Screen for ProgressLogScreen {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_add(1)));
-						Ok(crate::ui::UpdateAction::Continue)
+						Ok(crate::ui::UpdateAction::Continue.one())
 					},
-					_ => Ok(crate::ui::UpdateAction::Continue),
+					_ => Ok(crate::ui::UpdateAction::Continue.one()),
 				}
 			},
 			crate::ui::event::Event::Tick => {
@@ -168,21 +168,45 @@ impl Screen for ProgressLogScreen {
 						Ok(Ok(())) => { // completed successfully
 							// set the progress bar to full to mark as completed
 							*self.progress.lock().expect("Poisoned Lock") = self.target;
-							Ok(crate::ui::UpdateAction::Continue)
+							Ok(crate::ui::UpdateAction::Continue.one())
 						},
 						Ok(Err(err)) => { // completed with error
-							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err)))
+							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err)).one())
 						},
 						Err(err) => { // thread panicked
-							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })))
+							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one())
 						},
 					}
 				} else {
-					Ok(crate::ui::UpdateAction::Continue)
+					Ok(crate::ui::UpdateAction::Continue.one())
+				}
+			},
+			crate::ui::event::Event::Mouse(mouse) => {
+				use crossterm::event::MouseEventKind;
+				match mouse.kind {
+					MouseEventKind::ScrollUp => {
+						// switch to manual scroll and decrease scroll
+						let current_scroll = match self.scroll_mode.get() {
+							ScrollMode::Auto => self.max_scroll.get(),
+							ScrollMode::Manual(s) => s,
+						};
+						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_sub(1)));
+						Ok(crate::ui::UpdateAction::Continue.one())
+					},
+					MouseEventKind::ScrollDown => {
+						// switch to manual scroll and decrease scroll
+						let current_scroll = match self.scroll_mode.get() {
+							ScrollMode::Auto => self.max_scroll.get(),
+							ScrollMode::Manual(s) => s,
+						};
+						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_add(1)));
+						Ok(crate::ui::UpdateAction::Continue.one())
+					},
+					_ => Ok(crate::ui::UpdateAction::Continue.one()),
 				}
 			},
 			_ => {
-				Ok(crate::ui::UpdateAction::Continue)
+				Ok(crate::ui::UpdateAction::Continue.one())
 			},
 		}
 	}

@@ -2,11 +2,13 @@ mod progress;
 mod error_screen;
 mod progress_log_screen;
 mod info_screen;
+mod input_screen;
 
 pub use progress::ProgressBar;
 pub use error_screen::*;
 pub use progress_log_screen::*;
 pub use info_screen::*;
+pub use input_screen::*;
 use ratatui::{style::Stylize, text::Line, widgets::{Paragraph, Wrap}};
 
 #[derive(Debug, Clone, Default)]
