@@ -1,6 +1,6 @@
-use std::{any::Any, collections::VecDeque, path::{Path, PathBuf}, sync::{Arc, RwLock}};
+use std::{any::Any, collections::VecDeque, fmt::Debug, path::{Path, PathBuf}, sync::{Arc, RwLock, mpsc::RecvError}};
 
-use ratatui::{Frame, style::Color};
+use ratatui::{Frame, style::Color, text::Text};
 
 use crate::{extract::ExtractError, groupes::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, ui::{actions::UpdateActions, event::Event}};
 
@@ -116,11 +116,34 @@ impl std::fmt::Display for UIError {
 		}
 	}
 }
-impl std::error::Error for UIError {}
+impl std::error::Error for UIError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			UIError::IO { src } => Some(src),
+			UIError::Event { src } => Some(src),
+			UIError::Runtime { .. } => None,
+			UIError::Extract { src } => Some(src),
+			UIError::GroupeRegistry { src } => Some(src),
+			UIError::CompteRegistry { src } => Some(src),
+			UIError::MembreRegistry { src } => Some(src),
+			UIError::CancelAction { .. } => None,
+			UIError::Compte { src } => Some(src),
+			UIError::Input { src } => Some(src),
+		}
+	}
+}
 impl UIError {
 	pub fn msg(msg: &str) -> Self {
 		UIError::Runtime { src: Box::new(msg.to_string()) }
 	}
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ScreenSize {
+	Fill,
+	Length(u16),
+	Fit{ min: u16, max: u16 },
+	Ratio(f32),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -131,13 +154,15 @@ pub struct Theme {
 	background_color: Color,
 	main_menu_width: u16,
 	app_min_width: u16,
-	progress_bar_height: u16,
+	progress_bar_height: ScreenSize,
 	progress_bar_color: Color,
-	progress_bar_max_width: u16,
-	max_error_box_width: u16,
-	max_error_box_height: u16,
-	info_box_max_width: u16,
-	info_box_max_height: u16,
+	progress_bar_max_width: ScreenSize,
+	max_error_box_width: ScreenSize,
+	max_error_box_height: ScreenSize,
+	info_box_max_width: ScreenSize,
+	info_box_max_height: ScreenSize,
+	popup_menu_width: ScreenSize,
+	popup_menu_height: ScreenSize,
 }
 impl Theme {
 	const DARK: Self = Self {
@@ -147,13 +172,15 @@ impl Theme {
 		background_color: Color::Black,
 		main_menu_width: 30,
 		app_min_width: 80, // if the terminal is smaller than this, it will only render one screen at a time instead of seeing the screen and the menu at the same time with pop-ups on top.
-		progress_bar_height: 6,
+		progress_bar_height: ScreenSize::Length(6),
 		progress_bar_color: Color::White,
-		progress_bar_max_width: 120,
-		max_error_box_width: 160,
-		max_error_box_height: 40,
-		info_box_max_width: 80,
-		info_box_max_height: 60,
+		progress_bar_max_width: ScreenSize::Length(120),
+		max_error_box_width: ScreenSize::Fit { min: 20, max: 60 },
+		max_error_box_height: ScreenSize::Fit {min: 6, max: 20 },
+		info_box_max_width: ScreenSize::Fit { min: 20, max: 60 },
+		info_box_max_height: ScreenSize::Fit { min: 8, max: 20 },
+		popup_menu_width: ScreenSize::Fit { min: 20, max: 60 },
+		popup_menu_height: ScreenSize::Fit { min: 0, max: 20 },
 	};
 }
 
@@ -197,7 +224,7 @@ pub struct AppState {
 	pub comptes: RwLock<CompteReg>,
 	pub membres: RwLock<MembreReg>,
 	pub theme: RwLock<Theme>,
-	//pub action_queue: RwLock<VecDeque<UpdateAction>>,
+	pub polls: RwLock<VecDeque<PollRequest<'static>>>,
 }
 impl Default for AppState {
 	fn default() -> Self {
@@ -217,7 +244,123 @@ impl Default for AppState {
 			comptes: RwLock::new(comptes),
 			membres: RwLock::new(membres),
 			theme: RwLock::new(Theme::DARK),
-			//action_queue: RwLock::new(VecDeque::new()),
+			polls: RwLock::new(VecDeque::new()),
 		}
+	}
+}
+
+#[derive(Clone, Default)]
+pub struct Poll<'a> {
+	pub title: String,
+	pub prompt: Text<'a>,
+	pub validation: Option<crate::ui::screens::TextInputValidation>,
+	pub show_error: bool,
+}
+impl Debug for Poll<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Poll")
+			.field("title", &self.title)
+			.field("prompt", &self.prompt)
+			.field("validation", &self.validation.is_some())
+			.field("show_error", &self.show_error)
+			.finish()
+	}
+}
+impl<'a> Poll<'a> {
+	pub fn with_title(mut self, title: String) -> Self {
+		self.title = title;
+		self
+	}
+	pub fn with_prompt(mut self, prompt: Text<'a>) -> Self {
+		self.prompt = prompt;
+		self
+	}
+	pub fn with_validation(mut self, validation: crate::ui::screens::TextInputValidation) -> Self {
+		self.validation = Some(validation);
+		self
+	}
+	pub fn with_show_error(mut self, show_error: bool) -> Self {
+		self.show_error = show_error;
+		self
+	}
+	pub fn no_validation(mut self) -> Self {
+		self.validation = None;
+		self
+	}
+}
+impl Poll<'static> {
+	pub fn poll(self, state: Arc<AppState>) -> Result<Option<String>, RecvError> {
+		let (send, recv) = std::sync::mpsc::channel::<Option<String>>();
+		let poll_request = PollRequest {
+			data: self,
+			answer_to: send,
+		};
+		state.polls.write().expect("Poisoned Lock").push_back(poll_request);
+		recv.recv()
+	}
+}
+
+
+pub struct PollRequest<'a> {
+	pub data: Poll<'a>,
+	pub answer_to: std::sync::mpsc::Sender<Option<String>>,
+}
+impl<'a> PollRequest<'a> {
+	pub fn new(answer_to: std::sync::mpsc::Sender<Option<String>>) -> Self {
+		Self {
+			data: Poll::default(),
+			answer_to,
+		}
+	}
+
+	pub fn to_line_input_screen(self) -> screens::LineInputScreen<'a> {
+		let val = self.data.validation.clone();
+		let screen = screens::LineInputScreen::default()
+			.with_title(self.data.title)
+			.with_message(self.data.prompt)
+			.with_after(Box::new(move |result, _state| {
+				if let Some(result) = result {
+					if let Some(val) = val.as_ref() {
+						if val(result) {
+							match self.answer_to.send(Some(result.to_string())) {
+								Ok(_) => { Ok(UpdateAction::Pop.one()) },
+								Err(e) => { Err(UIError::Runtime { src: Box::new(format!("Failed to send poll answer: {}", e)) }) },
+							}
+						} else {
+							// invalid input
+							if self.data.show_error {
+								Ok(UpdateAction::ErrorPopUp(Box::new(UIError::msg("Input invalide"))).one())
+							} else {
+								Ok(UpdateAction::Continue.one())
+							}
+						}
+					} else { // no validation required, send the result to answer_to
+						match self.answer_to.send(Some(result.to_string())) {
+							Ok(_) => { Ok(UpdateAction::Pop.one()) },
+							Err(e) => { Err(UIError::Runtime { src: Box::new(format!("Failed to send poll answer: {}", e)) }) },
+						}
+					}
+				} else { // cancel the prompt, send None to answer_to
+					match self.answer_to.send(None) {
+						Ok(_) => { Ok(UpdateAction::Pop.one()) },
+						Err(e) => { Err(UIError::Runtime { src: Box::new(format!("Failed to send poll answer: {}", e)) }) },
+					}
+				}
+			}));
+		if let Some(validation) = self.data.validation {
+			screen.with_validation(validation)
+		} else {
+			screen
+		}
+	}
+}
+impl Debug for PollRequest<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Poll")
+			.field("title", &self.data.title)
+			.field("prompt", &self.data.prompt)
+			.field("validation", &self.data.validation.is_some())
+			.field("show_error", &self.data.show_error)
+			.finish()
 	}
 }

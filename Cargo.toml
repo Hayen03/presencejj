@@ -22,6 +22,7 @@ ratatui = {version="0.30.*", features=["unstable-widget-ref", "unstable-rendered
 crossterm = "0.29"
 color-eyre = "0.6"
 # textwrap = "0.16"
-# unicode-segmentation = "1.13"
+unicode-segmentation = "1.13"
+# unicode-width = "0.2.*"
 # ratatui_input = "0.1"
 ratatui-textarea = "*"

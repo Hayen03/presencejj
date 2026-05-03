@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use ratatui::text::Text;
 
@@ -17,6 +17,7 @@ pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionRes
 					id: grp.id,
 					desc: grp.short_desc(),
 					nb_sg,
+					participants: grp.participants.len(),
 				})
 			}
 		}).collect::<Vec<SousGroupePlan>>()
@@ -27,6 +28,75 @@ pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionRes
 	let progress_hook = screen.get_progress_hook();
 	let log_hook = screen.get_logger();
 	let thread_handle = std::thread::spawn(move || {
+		// poll the user for the missing nb_sg
+		//let mut nb_sgs = HashMap::new();
+		for plan in plans {
+			// early stopping if cancel requested
+			if *cancel_hook.lock().expect("Poisoned Lock") {
+				log_hook.lock().expect("Poisoned Lock").log(Desc::Warning("Création des sous-groupes annulée".into()));
+				return Ok(());
+			}
+			let nb = if let Some(nb_sg) = plan.nb_sg {
+				Some(nb_sg)
+			} else {
+				log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Le nombre de sous-groupes pour le groupe '{}' est inconnu, demande à l'utilisateur...", plan.desc)));
+				let poll = crate::ui::Poll {
+					title: "Nombre de sous-groupes manquant".into(),
+					prompt: Text::from(format!("Entrez le nombre de sous groupes pour le groupe {} (nombre de participant: {})", plan.desc, plan.participants)),
+					validation: Some(Arc::new(|s| s.parse::<usize>().is_ok())),
+					show_error: true,
+				}.poll(state.clone());
+				let nb = {
+					match poll {
+						Err(e) => {
+							log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur lors de la réception du nombre de sous-groupes pour le groupe '{}': {}", plan.desc, e)));
+							None
+						},
+						Ok(None) => {
+							log_hook.lock().expect("Poisoned Lock").log(Desc::Warning(format!("L'utilisateur a annulé la saisie du nombre de sous-groupes pour le groupe '{}'", plan.desc)));
+							None
+						},
+						Ok(Some(s)) => {
+							match s.parse::<usize>() {
+								Ok(n) => Some(n),
+								Err(e) => {
+									log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("L'utilisateur a entré une valeur invalide pour le nombre de sous-groupes du groupe '{}': {}", plan.desc, e)));
+									None
+								},
+							}
+						},
+					}
+				};
+				if let Some(nb) = nb {
+					log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Nombre de sous-groupes pour le groupe '{}' défini à {}", plan.desc, nb)));
+					Some(nb)
+				} else {
+					log_hook.lock().expect("Poisoned Lock").log(Desc::Warning(format!("Nombre de sous-groupes pour le groupe '{}' non défini, ce groupe sera ignoré", plan.desc)));
+					None
+				}
+			};
+
+			// create the subgroups
+			if let Some(nb) = nb {
+				if nb == 0 {
+					log_hook.lock().expect("Poisoned Lock").log(Desc::Warning(format!("Aucun sous-groupe à créer pour le groupe '{}'", plan.desc)));
+				} else {
+					let mut groupes = state.groupes.write().expect("Poisoned Lock");
+					let membres = state.membres.read().expect("Poisoned Lock");
+					match groupes.get_mut(plan.id).expect("Groupe Introuvable").mk_sous_groupes(nb, &membres) {
+						Ok(_v) => {
+							log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("{} sous-groupes créés pour le groupe '{}'", nb, plan.desc)));
+						},
+						Err(_e) => {
+							log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur lors de la création des sous-groupes pour le groupe '{}'", plan.desc)));
+						},
+					}
+				}
+			}
+
+			// increment progress
+			*progress_hook.lock().expect("Poisoned Lock") += 1;
+		}
 		Ok(())
 	});
 	Ok(crate::ui::UpdateAction::Push(Box::new(screen.with_thread(thread_handle))).one())
@@ -59,4 +129,5 @@ struct SousGroupePlan {
 	pub id: GroupeID,
 	pub desc: String,
 	pub nb_sg: Option<usize>,
+	pub participants: usize,
 }

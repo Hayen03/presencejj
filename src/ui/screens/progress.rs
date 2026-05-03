@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use ratatui::{layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Gauge, Paragraph, Widget, WidgetRef}};
 
-use crate::ui::{AppState, Theme, UIError, screens::Desc};
+use crate::ui::{AppState, ScreenSize, Theme, UIError, screens::Desc};
 
 
 
@@ -64,13 +64,20 @@ impl WidgetRef for ProgressBar {
 		let ratio = if target == 0 { 1.0 } else { progress as f64 / target as f64 };
 		// find the actual area where we want to render the progress bar, with some padding
 		// render as progress bar
-		let bar_height = Theme::DARK.progress_bar_height.min(area.height);
-		let bar_width = Theme::DARK.progress_bar_max_width.min(area.width - 4);
-		let bar_rect = area.centered(
-			ratatui::layout::Constraint::Length(bar_width), 
-			ratatui::layout::Constraint::Length(bar_height),
-		);
-		ratatui::widgets::Clear.render(bar_rect, buf); // clear the area before rendering the progress bar
+		let bar_height = match Theme::DARK.progress_bar_height {
+			ScreenSize::Fill => area.height,
+			ScreenSize::Length(h) => h.min(area.height),
+			ScreenSize::Ratio(r) => ((area.height as f32) * r).floor() as u16,
+			ScreenSize::Fit {min, max } => max.max(min).min(area.height),
+		};
+		let bar_width = match Theme::DARK.progress_bar_max_width {
+			ScreenSize::Fill => area.width,
+			ScreenSize::Length(h) => h.min(area.width),
+			ScreenSize::Ratio(r) => ((area.width as f32) * r).floor() as u16,
+			ScreenSize::Fit { min, max } => max.max(min).min(area.width),
+		};
+		let area = area.centered(ratatui::layout::Constraint::Max(bar_width), ratatui::layout::Constraint::Max(bar_height));
+		ratatui::widgets::Clear.render(area, buf); // clear the area before rendering the progress bar
 
 		let title = Line::from(self.title.as_str()).white().bold();
 		let desc = match self.text.lock().expect("Poisoned lock").clone() {
@@ -80,14 +87,14 @@ impl WidgetRef for ProgressBar {
 			Desc::Error(s) => Line::from(s).red(),
 		}.left_aligned();
 
-		if bar_rect.width < 30 {
+		if area.width < 30 {
 			let instruction = if self.is_done() {
 			Line::from(" Appuyez sur Entrée pour continuer. ")
 			} else {
 				Line::from(" Appuyez sur Esc pour annuler. ")
 			};
 			let bar_block = Block::bordered()
-				.title(title.centered())
+				.title_top(title.centered())
 				.title_bottom(instruction.centered().gray())
 				.border_set(border::THICK);
 			// render as text
@@ -96,7 +103,7 @@ impl WidgetRef for ProgressBar {
 				.centered()
 				.block(bar_block)
 				.bg(Color::Black)
-				.render(bar_rect, buf);
+				.render(area, buf);
 			
 		} else {
 			let instruction = if self.is_done() {
@@ -109,7 +116,7 @@ impl WidgetRef for ProgressBar {
 				.title_bottom(instruction.centered().gray())
 				.border_set(border::THICK)
 				.bg(Color::Black);
-			let inner = bar_block.inner(bar_rect);
+			let inner = bar_block.inner(area);
 			let bar_area = Rect { // offset the inner area by one to give space to the desc label
 				x: inner.x,
 				y: inner.y + 1,
@@ -122,7 +129,7 @@ impl WidgetRef for ProgressBar {
 				width: inner.width,
 				height: 1,
 			};
-			bar_block.render(bar_rect, buf);
+			bar_block.render(area, buf);
 			let label = format!("{} / {}", progress, target);
 			Gauge::default()
 				//.block(bar_block)

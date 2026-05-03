@@ -10,7 +10,7 @@ use office::Excel;
 use prelude::read_int_option;
 use print::typst::{print_fiche_med, print_presence_anim, print_presence_sdj};
 
-use crate::{data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, groupes::{RegError, comptes::{CompteErr, CompteID}, groupes::GroupeID, membres}, ui::{TextInputError, UIError, app::App, event::{EventError, EventHandler}, tui::{self, Tui, TuiError}}};
+use crate::{data::{Taille, stats::{fill_stats, get_unique_stats, print_stats_to_excel}}, groupes::{RegError, comptes::{CompteErr, CompteID}, groupes::GroupeID, membres}, prelude::read_int, ui::{TextInputError, UIError, app::App, event::{EventError, EventHandler}, tui::{self, Tui, TuiError}}};
 
 pub mod data;
 pub mod extract;
@@ -547,7 +547,14 @@ fn estimation_chandail(program: &ProgramData) -> Result<(), ()> {
     let estimation = match mode {
         EstimationChandailMode::Annuler => {return Ok(());},
         EstimationChandailMode::Simple => crate::stats::calcul_chandail(&program.groupes, &program.membres),
-        EstimationChandailMode::Complex => crate::stats::calcul_chandail_complex(&program.groupes, &program.membres),
+        EstimationChandailMode::Complex => {
+            let mut pred = HashMap::new();
+            for cat in Taille::tailles() {
+                let cap: usize = read_int(&format!("Nombre prévu de {}", cat)) as usize;
+                pred.insert(*cat, cap);
+            }
+            crate::stats::calcul_chandail_complex(&program.groupes, &program.membres, &pred)
+        },
     };
 
     let mut total = 0;

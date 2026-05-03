@@ -7,7 +7,7 @@ use crate::ui::{AppState, Screen, UIError, actions::UpdateActions};
 
 static MAX_WIDTH: u16 = 80;
 
-pub type TextInputValidation = Box<dyn Fn(&str) -> bool>;
+pub type TextInputValidation = Arc<dyn (Fn(&str) -> bool) + Send + Sync>;
 pub type TextInputAfterResult = Result<UpdateActions, UIError>;
 pub type TextInputAfter = Box<dyn Fn(Option<&str>, Arc<AppState>) -> TextInputAfterResult>;
 #[derive(Default)]
@@ -60,13 +60,14 @@ impl<'a> LineInputScreen<'a> {
 impl<'a> WidgetRef for LineInputScreen<'a> {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 		let width = area.width.min(MAX_WIDTH);
+		let tmp_area = area.centered(ratatui::layout::Constraint::Length(width), ratatui::layout::Constraint::Min(0));
 		
 		let main_block = Block::bordered()
 			.border_set(border::THICK)
 			.border_style(Style::new().white())
 			.title_top(Line::from(format!(" {} ", self.title)).centered().white())
 			.bg(Color::Black);
-		let tmp_inner = main_block.inner(area);
+		let tmp_inner = main_block.inner(tmp_area);
 		let block_height_diff = area.height - tmp_inner.height;
 
 		let desc = Paragraph::new(self.message.clone())

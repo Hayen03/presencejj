@@ -11,7 +11,8 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 		let lock = state.theme.read().expect("Poisoned Lock");
 		(lock.info_box_max_width, lock.info_box_max_height)
 	};
-	let screen = crate::ui::screens::InfoScreen::new(title, text, size);
+	let screen = crate::ui::screens::InfoScreen::new(title, text)
+		.with_size(size.0, size.1);
 
 	Ok(crate::ui::UpdateAction::PushSub(Box::new(screen)).one())
 }
