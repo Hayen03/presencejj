@@ -1,5 +1,4 @@
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
-use unicode_segmentation::UnicodeSegmentation;
 // use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{Screen, ScreenSize};

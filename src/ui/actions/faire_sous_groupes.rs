@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use ratatui::text::Text;
 
-use crate::{groupes::groupes::{Groupe, GroupeID, NULL_GROUPE}, prelude::print_option, ui::{AppState, TextInputError, screens::{Desc, ProgressLogScreen}}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, ui::{AppState, screens::{Desc, ProgressLogScreen}}};
 
 pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 

@@ -1,5 +1,5 @@
 use crossterm::event::{KeyEvent, MouseEvent};
-use std::{sync::mpsc, thread, time::{Duration, Instant}};
+use std::{sync::mpsc::{self, SendError}, thread, time::{Duration, Instant}};
 
 use ratatui::crossterm::event as cte;
 
@@ -37,17 +37,25 @@ pub struct EventHandler {
 	/// Receiver Channel
 	receiver: mpsc::Receiver<Event>,
 	/// Event handler thread
-	handler: thread::JoinHandle<()>,
+	handler: Option<thread::JoinHandle<()>>,
+	// hook for cancellation of the event handler thread
+	cancel_hook: std::sync::Arc<std::sync::Mutex<bool>>,
 }
 impl EventHandler {
 	pub fn new(tick_rate: u64) -> Self {
 		let tick_rate = Duration::from_millis(tick_rate);
 		let (sender, receiver) = mpsc::channel();
+		let cancel_hook = std::sync::Arc::new(std::sync::Mutex::new(false));
 		let handler = {
 			let sender = sender.clone();
+			let cancel = cancel_hook.clone();
 			thread::spawn(move || {
 				let mut last_tick = Instant::now();
 				loop {
+					// check for cancellation
+					if *cancel.lock().expect("Poisoned Lock") {
+						break;
+					}
 					let timeout = tick_rate
 						.checked_sub(last_tick.elapsed())
 						.unwrap_or(tick_rate);
@@ -72,10 +80,19 @@ impl EventHandler {
 				}
 			})
 		};
-		Self { sender, receiver, handler }
+		Self { sender, receiver, handler: Some(handler), cancel_hook }
 	}
 	pub fn next(&self) -> Result<Event, EventError> {
 		Ok(self.receiver.recv()?)
+	}
+	pub fn send(&self, event: Event) -> Result<(), SendError<Event>> {
+		self.sender.send(event)
+	}
+	pub fn end(&mut self) {
+		*self.cancel_hook.lock().expect("Poisoned Lock") = true;
+		if let Some(handle) = self.handler.take() {
+			let _ = handle.join();
+		}
 	}
 }
 impl From<Event> for ratatui_textarea::Input {

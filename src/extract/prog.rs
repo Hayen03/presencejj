@@ -1,16 +1,15 @@
-use std::str::FromStr;
+use console::Term;
+use office::{DataType, Range};
 
-use console::{style, Term};
-use office::{DataType, Excel, Range};
+use crate::{cdj::groupes::{Groupe, GroupeID, GroupeReg}, prelude::{Logger, O}};
 
-use crate::{data::{BoolJustifie, Genre, Taille, adresse::Adresse, cam::CAM, email::Email, tel::Tel}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{Date, Logger, O, print_option}};
-use crate::config::Config;
-
-use super::{excel::{into_int, into_string}, ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
+use super::{excel::{into_int, into_string}, ExtractError, GROUPE_RE};
 
 pub fn extract_group_info_from_prog(ws: &[DataType], config: &ProgLnConfig, saison: O<&str>) -> Result<Groupe, ExtractError> {
-    let mut g = Groupe::default();
-    g.saison = saison.map(String::from);
+    let mut g = Groupe {
+        saison: saison.map(String::from),
+        ..Groupe::default()
+    };
     let grp_desc = match config.nom {
         Some(pos) => into_string(&ws[pos]),
         None => return Err(ExtractError::InvalidFormat),

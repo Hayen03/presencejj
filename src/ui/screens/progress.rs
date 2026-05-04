@@ -183,6 +183,7 @@ impl crate::ui::Screen for ProgressBar {
 	}
 }
 
+#[allow(dead_code)]
 pub fn log(hook: &Mutex<Desc>, text: Desc) {
 	*hook.lock().expect("Poisoned Lock") = text;
 	//std::thread::sleep(Duration::from_millis(500));

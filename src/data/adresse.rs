@@ -63,7 +63,7 @@ impl Adresse {
 			} else {
 				s += " ";
 			}
-			s += &rue;
+			s += rue;
 		}
 		if let Some(ville) = &self.ville {
 			if first {
@@ -113,7 +113,7 @@ impl Adresse {
 		// format!("{num} {rue} app. {app}, {ville} {prov} {pays} {cp}")
 		s
 	}
-	pub fn from_full(full: &str) -> Result<Self, ()> {
+	pub fn from_full(full: &str) -> ParsingResult<Self> {
 		let mut adr = Adresse::default();
 		if let Some(cap) = ADRESSE_FULL_REGEX.captures(full) {
 			adr.numero = Some(cap.name("num").unwrap().as_str().parse().unwrap());
@@ -129,11 +129,8 @@ impl Adresse {
 				pays = String::from("Canada");
 			}
 			adr.pays = Some(Pays::from(pays.as_str()));
-			let code_postal = match CodePostal::parse(cap.name("codepostal").unwrap().as_str()) {
-				Ok(cp) => Some(cp),
-				Err(_) => return Err(()),
-			};
-			adr.code_postal = code_postal;
+			let code_postal = CodePostal::parse(cap.name("codepostal").unwrap().as_str())?;
+			adr.code_postal = Some(code_postal);
 		}
 		Ok(adr)
 	}

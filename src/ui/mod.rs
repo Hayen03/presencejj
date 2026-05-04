@@ -1,8 +1,8 @@
-use std::{any::Any, collections::VecDeque, fmt::Debug, path::{Path, PathBuf}, sync::{Arc, RwLock, mpsc::RecvError}};
+use std::{any::Any, collections::VecDeque, fmt::Debug, path::PathBuf, sync::{Arc, RwLock, mpsc::RecvError}};
 
-use ratatui::{Frame, style::Color, text::Text};
+use ratatui::text::Text;
 
-use crate::{extract::ExtractError, groupes::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, ui::{actions::UpdateActions, event::Event}};
+use crate::{extract::ExtractError, cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, ui::{actions::UpdateActions, event::Event}};
 
 pub mod app;
 pub mod tui;
@@ -146,16 +146,17 @@ pub enum ScreenSize {
 	Ratio(f32),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 pub struct Theme {
-	menu_item_base_color: Color,
-	menu_item_selected_color: Color,
-	menu_item_selected_bg_color: Color,
-	background_color: Color,
+	//menu_item_base_color: Color,
+	//menu_item_selected_color: Color,
+	//menu_item_selected_bg_color: Color,
+	//background_color: Color,
 	main_menu_width: u16,
 	app_min_width: u16,
 	progress_bar_height: ScreenSize,
-	progress_bar_color: Color,
+	//progress_bar_color: Color,
 	progress_bar_max_width: ScreenSize,
 	max_error_box_width: ScreenSize,
 	max_error_box_height: ScreenSize,
@@ -166,14 +167,14 @@ pub struct Theme {
 }
 impl Theme {
 	const DARK: Self = Self {
-		menu_item_base_color: Color::White,
-		menu_item_selected_color: Color::Yellow,
-		menu_item_selected_bg_color: Color::DarkGray,
-		background_color: Color::Black,
+		//menu_item_base_color: Color::White,
+		//menu_item_selected_color: Color::Yellow,
+		//menu_item_selected_bg_color: Color::DarkGray,
+		//background_color: Color::Black,
 		main_menu_width: 30,
 		app_min_width: 80, // if the terminal is smaller than this, it will only render one screen at a time instead of seeing the screen and the menu at the same time with pop-ups on top.
 		progress_bar_height: ScreenSize::Length(6),
-		progress_bar_color: Color::White,
+		//progress_bar_color: Color::White,
 		progress_bar_max_width: ScreenSize::Length(120),
 		max_error_box_width: ScreenSize::Fit { min: 20, max: 60 },
 		max_error_box_height: ScreenSize::Fit {min: 6, max: 20 },

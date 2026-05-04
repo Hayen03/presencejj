@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::ui::{AppState, Screen, UIError, UpdateAction};
+use crate::ui::{AppState, UIError, UpdateAction};
 
 mod quit;
 mod save;

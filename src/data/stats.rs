@@ -1,11 +1,11 @@
-use std::{collections::{BTreeSet, HashMap, HashSet}, fmt::Display, fs::File, hash::Hash};
+use std::{collections::{BTreeSet, HashMap}, fmt::Display, fs::File, hash::Hash};
 
 use console::Term;
 use lazy_static::lazy_static;
 //use rand::rand_core::le;
-use rust_xlsxwriter::{chart::{Chart, ChartDataLabel, ChartType}, workbook::Workbook, worksheet::Worksheet, Color, Format, FormatAlign, FormatBorder, Formula, Table, TableColumn, TableFunction, XlsxError};
+use rust_xlsxwriter::{chart::{Chart, ChartDataLabel, ChartType}, workbook::Workbook, worksheet::Worksheet, Color, Format, FormatAlign, FormatBorder, Formula, Table, TableColumn, XlsxError};
 
-use crate::{data::adresse::CodePostal, groupes::{comptes::CompteReg, groupes::{Groupe, GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg}}};
+use crate::{data::adresse::CodePostal, cdj::{comptes::CompteReg, groupes::{Groupe, GroupeID, GroupeReg}, membres::{MembreID, MembreReg}}};
 
 static XLSX_SITE_BLOCK_SPACE: u32 = 3; // espace entre les blocs de site dans le fichier excel
 lazy_static!{
@@ -260,6 +260,7 @@ pub fn get_unique_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>) -> UniqueSt
 	stats
 }
 
+#[derive(Debug)]
 pub enum StatsError {
 	FromXlsx(XlsxError),
 	FromIO(std::io::Error),
@@ -280,6 +281,14 @@ impl Display for StatsError {
 impl From<std::io::Error> for StatsError {
 	fn from(value: std::io::Error) -> Self {
 		StatsError::FromIO(value)
+	}
+}
+impl std::error::Error for StatsError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			StatsError::FromXlsx(e) => Some(e),
+			Self::FromIO(e) => Some(e),
+		}
 	}
 }
 
@@ -438,12 +447,28 @@ pub fn print_stats_to_excel(stats: &Stats, gstats: &HashMap<GroupeID, GroupeStat
 				"Capacite".into(), "Inscriptions".into(), "Annulations".into(), "Attente".into(), "% Occupation".into(), "% Annulation".into(),
 			];
 	for site in udata_site_col {
-		write_site_block(stats_sheet, &percent_format, stats, ustats, &cols, at_site, &site, TotalStatus::new(false, false, false))?;
+		SiteBlock {
+			percent_format: &percent_format,
+			stats,
+			ustats,
+			cols: &cols,
+			at_site,
+			site: &site,
+			total: TotalStatus::new(false, false, false),
+		}.write(stats_sheet)?;
 		at_site += 4 + ustats.sems.len() as u32 + XLSX_SITE_BLOCK_SPACE; // une ligne par semaine + 4 lignes de titre (et une de total) + 3 lignes de séparation
 	}
 	// gros bloc de total
 	{
-		write_site_block(stats_sheet, &percent_format, stats, ustats, &cols, at_site, "Total", TotalStatus::new(true, false, false))?;
+		SiteBlock {
+			percent_format: &percent_format,
+			stats,
+			ustats,
+			cols: &cols,
+			at_site,
+			site: "Total",
+			total: TotalStatus::new(true, false, false),
+		}.write(stats_sheet)?;
 	}
 	stats_sheet.autofit();
 
@@ -534,7 +559,7 @@ pub struct SemCols {
 }
 impl SemCols {
 	pub fn new(at_cat: u16, at_site: u32) -> Self {
-		let cap_col = at_cat + 0;
+		let cap_col = at_cat; // + 0
 		let cap_col_str = to_excel_column(cap_col + 1);
 		let insc_col = at_cat + 1;
 		let insc_col_str = to_excel_column(insc_col + 1);
@@ -591,59 +616,101 @@ pub fn write_xlsx_row(stats_sheet: &mut Worksheet, sem_stats: &SemStats, percent
 	Ok(())
 }
 
-pub fn write_cat_block(stats_sheet: &mut Worksheet, percent_format: &Format, stats: &Stats, ustats: &UniqueStats, site: &str, cat: &str, cols: &[String], at_cat: u16, at_site: u32, total: TotalStatus) -> Result<(), XlsxError> {
-	let (total_site, total_age, _) = total.tup();
- 	{
-		stats_sheet.merge_range(at_site+1, at_cat, at_site+1, at_cat + cols.len() as u16 - 1, cat, &XLSX_CAT_FORMAT)?;
-		//stats_sheet.write(at_site + 1, at_cat, cat)?;
-		stats_sheet.write_row(at_site + 2, at_cat, cols)?;
-
-		let semcols = SemCols::new(at_cat, at_site);
-
-		for (j, sem) in ustats.sems.iter().enumerate() {
-			let sem_row = at_site + 3 + j as u32;
-			let sem_stats = stats.sites.get(site).and_then(|s| s.ages.get(cat).and_then(|a| a.semaines.get(sem))).copied().unwrap_or_default();
-			write_xlsx_row(stats_sheet, &sem_stats, percent_format, sem_row, &semcols, TotalStatus::new(total_site, total_age, false))?;
-		}
-		// ligne de total
+pub struct CatBlock<'a> {
+	pub percent_format: &'a Format,
+	pub stats: &'a Stats,
+	pub ustats: &'a UniqueStats,
+	pub site: &'a str,
+	pub cat: &'a str,
+	pub cols: &'a [String],
+	pub at_cat: u16,
+	pub at_site: u32,
+	pub total: TotalStatus,
+}
+impl CatBlock<'_> {
+	pub fn write(self, worksheet: &mut Worksheet) -> Result<(), XlsxError> {
+		let (total_site, total_age, _) = self.total.tup();
 		{
-			let total_row = at_site + 3 + ustats.sems.len() as u32;
-			let total_stats = stats.sites.get(site).and_then(|s| s.ages.get(cat)).map(|a| a.total()).unwrap_or_default();
-			write_xlsx_row(stats_sheet, &total_stats, percent_format, total_row, &semcols, TotalStatus::new(total_site, total_age, true))?;
+			worksheet.merge_range(self.at_site+1, self.at_cat, self.at_site+1, self.at_cat + self.cols.len() as u16 - 1, self.cat, &XLSX_CAT_FORMAT)?;
+			//stats_sheet.write(at_site + 1, at_cat, cat)?;
+			worksheet.write_row(self.at_site + 2, self.at_cat, self.cols)?;
+
+			let semcols = SemCols::new(self.at_cat, self.at_site);
+
+			for (j, sem) in self.ustats.sems.iter().enumerate() {
+				let sem_row = self.at_site + 3 + j as u32;
+				let sem_stats = self.stats.sites.get(self.site).and_then(|s| s.ages.get(self.cat).and_then(|a| a.semaines.get(sem))).copied().unwrap_or_default();
+				write_xlsx_row(worksheet, &sem_stats, self.percent_format, sem_row, &semcols, TotalStatus::new(total_site, total_age, false))?;
+			}
+			// ligne de total
+			{
+				let total_row = self.at_site + 3 + self.ustats.sems.len() as u32;
+				let total_stats = self.stats.sites.get(self.site).and_then(|s| s.ages.get(self.cat)).map(|a| a.total()).unwrap_or_default();
+				write_xlsx_row(worksheet, &total_stats, self.percent_format, total_row, &semcols, TotalStatus::new(total_site, total_age, true))?;
+			}
 		}
+		// un peu de formatage
+		worksheet.set_range_format(self.at_site+2, self.at_cat, self.at_site+2, self.at_cat+4, &XLSX_COL_FORMAT)?;
+		Ok(())
 	}
-	// un peu de formatage
-	stats_sheet.set_range_format(at_site+2, at_cat, at_site+2, at_cat+4, &XLSX_COL_FORMAT)?;
-	Ok(())
 }
 
-pub fn write_site_block(stats_sheet: &mut Worksheet, percent_format: &Format, stats: &Stats, ustats: &UniqueStats, cols: &[String], at_site: u32, site: &str, total: TotalStatus) -> Result<(), XlsxError> {
-	let (total_site, _, _) = total.tup();
-	let mut age_col = ustats.ages.keys().cloned().collect::<Vec<_>>();
-	age_col.sort();
-	let full_range = 6*(ustats.ages.len() + 1) as u16;
-	stats_sheet.merge_range(at_site, 0, at_site, full_range, site, &XLSX_SITE_FORMAT)?;
-	//stats_sheet.write(at_site, 0, site)?;
-	stats_sheet.write(at_site + 2, 0, "Semaine")?;
-	stats_sheet.write_column(at_site + 3, 0, &ustats.sems)?;
-	stats_sheet.write(at_site + 3 + ustats.sems.len() as u32, 0, "Total")?;
-	for (i, cat) in age_col.iter().enumerate() {
-		let at_cat = 1 + (i*cols.len()) as u16;
-		write_cat_block(stats_sheet, percent_format, stats, ustats, site, cat, cols, at_cat, at_site, TotalStatus::new(total_site, false, false))?;
+pub struct SiteBlock<'a> {
+	pub percent_format: &'a Format,
+	pub stats: &'a Stats,
+	pub ustats: &'a UniqueStats,
+	pub site: &'a str,
+	pub cols: &'a [String],
+	pub at_site: u32,
+	pub total: TotalStatus,
+}
+impl SiteBlock<'_> {
+	pub fn write(self, worksheet: &mut Worksheet) -> Result<(), XlsxError> {
+		let (total_site, _, _) = self.total.tup();
+		let mut age_col = self.ustats.ages.keys().cloned().collect::<Vec<_>>();
+		age_col.sort();
+		let full_range = 6*(self.ustats.ages.len() + 1) as u16;
+		worksheet.merge_range(self.at_site, 0, self.at_site, full_range, self.site, &XLSX_SITE_FORMAT)?;
+		//stats_sheet.write(at_site, 0, site)?;
+		worksheet.write(self.at_site + 2, 0, "Semaine")?;
+		worksheet.write_column(self.at_site + 3, 0, &self.ustats.sems)?;
+		worksheet.write(self.at_site + 3 + self.ustats.sems.len() as u32, 0, "Total")?;
+		for (i, cat) in age_col.iter().enumerate() {
+			let at_cat = 1 + (i*self.cols.len()) as u16;
+			CatBlock {
+				percent_format: self.percent_format,
+				stats: self.stats,
+				ustats: self.ustats,
+				site: self.site,
+				cat,
+				cols: self.cols,
+				at_cat,
+				at_site: self.at_site,
+				total: TotalStatus::new(total_site, true, false),
+			}.write(worksheet)?;
 
-		// un peu de formatage
-		stats_sheet.set_range_format(at_site+3, at_cat+5, at_site+3+ustats.sems.len() as u32, at_cat+5, &XLSX_SEP_FORMAT)?;
-		stats_sheet.set_cell_format(at_site+2, at_cat+5, &XLSX_COL_SEP_FORMAT)?;
+			// un peu de formatage
+			worksheet.set_range_format(self.at_site+3, at_cat+5, self.at_site+3+self.ustats.sems.len() as u32, at_cat+5, &XLSX_SEP_FORMAT)?;
+			worksheet.set_cell_format(self.at_site+2, at_cat+5, &XLSX_COL_SEP_FORMAT)?;
+		}
+		// petit bloc de total
+		{
+			let i = age_col.len();
+			let at_cat = 1 + (i*self.cols.len()) as u16;
+			CatBlock {
+				percent_format: self.percent_format,
+				stats: self.stats,
+				ustats: self.ustats,
+				site: self.site,
+				cat: "Total",
+				cols: self.cols,
+				at_cat,
+				at_site: self.at_site,
+				total: TotalStatus::new(total_site, true, false),
+			}.write(worksheet)?;
+		}
+		Ok(())
 	}
-	// petit bloc de total
-	{
-		let i = age_col.len();
-		let at_cat = 1 + (i*cols.len()) as u16;
-		write_cat_block(stats_sheet, percent_format, stats, ustats, site, "Total", cols, at_cat, at_site, TotalStatus::new(total_site, true, false))?;
-	}
-
-
-	Ok(())
 }
 
 fn chart_occupation_par_categorie(sheet: &mut Worksheet, stats: &Stats, ustats: &UniqueStats, row: u32, col: u16) -> Result<(), XlsxError> {

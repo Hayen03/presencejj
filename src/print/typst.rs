@@ -1,10 +1,12 @@
 use chrono::{Datelike, Local};
 
-use crate::{config::Config, data::cam::CAM, groupes::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeID, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
+use crate::{config::Config, data::cam::CAM, cdj::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
 
 use super::PrintError;
 use core::str;
-use std::{collections::HashSet, fmt::Display, fs::OpenOptions, io::Write, ops::BitAnd, process::Command};
+use std::{collections::HashSet, fmt::Display, fs::OpenOptions, process::Command};
+
+use std::io::Write;
 
 pub enum Delimiter {
 	Quotes,
@@ -143,17 +145,12 @@ pub struct PresenceSDJInfo<'a> {
 	pub saison: Option<&'a str>,
 }
 fn filter_grp(grp: &Groupe, info: &PresenceSDJInfo) -> bool {
-	grp.saison.as_ref().map(String::as_str) == info.saison &&
-	grp.site.as_ref().map(String::as_str) == info.site &&
-	grp.semaine.as_ref().map(String::as_str) == info.semaine
+	grp.saison.as_deref() == info.saison &&
+	grp.site.as_deref() == info.site &&
+	grp.semaine.as_deref() == info.semaine
 }
 fn get_mbr_sg(mid: MembreID, grp: &Groupe) -> Option<&SousGroupe> {
-	for sg in grp.sous_groupe.iter() {
-		if sg.participants.contains(&mid) {
-			return Some(sg);
-		}
-	}
-	return None;
+	grp.sous_groupe.iter().find(|&sg| sg.participants.contains(&mid)).map(|v| v as _)
 }
 pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>) -> Result<(), PrintError> {
 	let root = out_dir.unwrap_or(&config.out_dir);
@@ -249,6 +246,9 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 }
 
 fn mk_membre(membre: &Membre, compte: &Compte) -> String {
+	let exp_mois = po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:02}", s.exp_mois())), Delimiter::Brackets);
+	let exp_year = po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:04}", s.exp_an())), Delimiter::Brackets);
+	let naissance = format!("{an:04}/{mois:02}/{jour:02}", an=membre.naissance.year(), mois=membre.naissance.month0()+1, jour=membre.naissance.day0()+1);
 	format!("new_enfant(
 		id: \"{mid}\",
 		nom: [{nom}],
@@ -276,8 +276,6 @@ fn mk_membre(membre: &Membre, compte: &Compte) -> String {
 			nom=membre.nom,
 			prenom=membre.prenom,
 			nam=po(membre.fiche_sante.cam.as_ref().map(CAM::numero), Delimiter::Brackets),
-			exp_mois=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:02}", s.exp_mois())), Delimiter::Brackets),
-			exp_year=po(membre.fiche_sante.cam.as_ref().map(|s| format!("{:04}", s.exp_an())), Delimiter::Brackets),
 			genre=po(membre.genre, Delimiter::Brackets),
 			allergies = match membre.fiche_sante.allergies.len() {
 				0 => String::new(),
@@ -327,7 +325,6 @@ fn mk_membre(membre: &Membre, compte: &Compte) -> String {
 			tse=po(membre.piscine.tete_sous_eau, Delimiter::None),
 			auth_photo=po(membre.auth_photo, Delimiter::None),
 			comment=po(membre.commentaire.as_ref(), Delimiter::Brackets),
-			naissance=format!("{an:04}/{mois:02}/{jour:02}", an=membre.naissance.year(), mois=membre.naissance.month0()+1, jour=membre.naissance.day0()+1),
 			age=po(Local::now().date_naive().years_since(membre.naissance), Delimiter::Brackets),
 		)
 }
@@ -336,7 +333,7 @@ fn mk_groupe(groupe: &Groupe, sous_groupe: Option<&SousGroupe>) -> String {
 	format!("new_groupe(saison: {saison}, site: {site}, categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, semaine: {semaine}, activite: {activite}, profil: {profil}, groupe_num: {groupe_num})",
 	saison=po(groupe.saison.as_ref(), Delimiter::Brackets),
 	site=po(groupe.site.as_ref(), Delimiter::Brackets),
-	categorie=po(groupe.category.as_ref().map(String::as_str), Delimiter::Brackets),
+	categorie=po(groupe.category.as_deref(), Delimiter::Brackets),
 	discriminant=po(groupe.discriminant.as_ref(), Delimiter::Brackets),
 	animateur=po(sous_groupe.map(|sg| sg.animateur.as_ref()).unwrap_or(None).map(String::as_str), Delimiter::Brackets),
 	semaine=po(groupe.semaine.as_ref(), Delimiter::Brackets),

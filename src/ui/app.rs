@@ -1,9 +1,8 @@
-use std::{fmt::Debug, io::Write, sync::Arc};
+use std::{io::Write, sync::Arc};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::{Frame, Terminal, buffer::Buffer, layout::Rect, prelude::CrosstermBackend, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Paragraph, StatefulWidgetRef, Widget, WidgetRef}};
+use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
 
-use crate::ui::{AppState, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::{self, Event}, screens::ErrorScreen, tui::Tui};
+use crate::ui::{AppState, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::ErrorScreen, tui::Tui};
 use crate::ui::actions;
 use crate::ui::screens::{Menu, MenuItem};
 
@@ -72,6 +71,7 @@ impl App {
 		}
 	}
 
+	#[allow(dead_code)]
 	fn get_focused_screen_mut(&mut self) -> &mut dyn Screen {
 		match (self.stack.last_mut(), self.sub_screen_stack.last_mut()) {
 			(_, Some(sub_screen)) => sub_screen.as_mut(),

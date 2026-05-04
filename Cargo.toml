@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints.rust]
+unused_variables = "allow"
+unused_assignments = "allow"
+
 [dependencies]
 rfd = "0.17.2"
 office = "0.8"
@@ -26,3 +30,8 @@ unicode-segmentation = "1.13"
 # unicode-width = "0.2.*"
 # ratatui_input = "0.1"
 ratatui-textarea = "*"
+typst-bake = "0.1.9"
+
+[package.metadata.typst-bake]
+template-dir = "./templates"
+fonts-dir = "./fonts"

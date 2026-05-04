@@ -1,4 +1,4 @@
-use std::{collections::{hash_map::Values, HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}, iter::{Filter, Map}};
+use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use lazy_static::lazy_static;
 
@@ -52,7 +52,7 @@ impl Compte {
         else {Err(CompteErr::MembreDejaExistant(membre.id))}
     }
     pub fn remove_membre(&mut self, membre: &mut Membre) -> Result<(), CompteErr> {
-        if let None = membre.compte { Err(CompteErr::MembreSansCompte(membre.id)) }
+        if membre.compte.is_none() { Err(CompteErr::MembreSansCompte(membre.id)) }
         else if self.membres.remove(&membre.id) {
             membre.compte = None;
             Ok(())
@@ -116,11 +116,10 @@ impl CompteReg {
         self.reg.contains_key(&cid)
     }
     pub fn add(&mut self, compte: Compte) -> Result<(), RegError<CompteID>> {
-        if self.reg.contains_key(&compte.id) {Err(RegError::KeyAlreadyInReg(compte.id))}
-        else {
-            self.reg.insert(compte.id, compte);
+        if let std::collections::hash_map::Entry::Vacant(e) = self.reg.entry(compte.id) {
+            e.insert(compte);
             Ok(())
-        }
+        } else {Err(RegError::KeyAlreadyInReg(compte.id))}
     }
     pub fn remove(&mut self, cid: CompteID) -> Result<Compte, RegError<CompteID>> {
         match self.reg.remove(&cid) {

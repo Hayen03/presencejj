@@ -1,9 +1,9 @@
 use std::{fmt::Debug, sync::Arc};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style, symbols::border, text::Line, widgets::{Block, WidgetRef}};
 
-use crate::ui::{AppState, Screen, ScreenSize, Theme, UIError, UpdateAction, actions::UpdateActions, event::{self, Event}, screens::ErrorScreen, tui::Tui};
+use crate::ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, event::{self}};
 use crate::ui::actions;
 use unicode_segmentation::UnicodeSegmentation;
 

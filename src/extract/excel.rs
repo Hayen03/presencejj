@@ -1,9 +1,9 @@
-use std::{io::Write, str::FromStr};
+use std::str::FromStr;
 
 use console::{style, Term};
 use office::{DataType, Excel, Range};
 
-use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, groupes::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}};
+use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, cdj::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}};
 use crate::config::Config;
 
 use super::{ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
@@ -211,7 +211,7 @@ pub fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membr
     mbr.id = MembreID(mbr.get_id_seed());
     Ok(mbr)
 }
-pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, logerr: Option<&impl Fn(&str) -> ()>) {
+pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membre, logerr: Option<&impl Fn(&str)>) {
     // allergies
     if let Some(col) = dcc.all_alim {
         if let Some((b, c)) = into_bool_with_comment(&ln[col]) {
@@ -360,7 +360,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
             match CAM::from_str(&s) {
                 Ok(cam) => membre.fiche_sante.cam = Some(cam),
                 Err(_e) => {
-                    logerr.map(|f| f(&format!("Erreur en lisant le CAM: {} ({})", s, _e.to_string())));
+                    if let Some(f) = logerr { f(&format!("Erreur en lisant le CAM: {} ({})", s, _e)) }
                 },
             }
         }
@@ -371,7 +371,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Genre::from_str(&s) {
                 Ok(genre) => membre.genre = Some(genre),
-                Err(_) => {logerr.map(|f| f(&format!("Erreur en lisant le genre: {}", s)));},
+                Err(_) => {if let Some(f) = logerr { f(&format!("Erreur en lisant le genre: {}", s)) }},
             }
         }
     }
@@ -381,7 +381,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[0] = Some(interet),
-                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 1er interet: {}", s))); }
+                Err(_) => { if let Some(f) = logerr { f(&format!("Erreur en lisant le 1er interet: {}", s)) } }
             }
         }
     }
@@ -389,7 +389,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[1] = Some(interet),
-                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 2ème interet: {}", s))); }
+                Err(_) => { if let Some(f) = logerr { f(&format!("Erreur en lisant le 2ème interet: {}", s)) } }
             }
         }
     }
@@ -397,7 +397,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[2] = Some(interet),
-                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 3ème interet: {}", s))); }
+                Err(_) => { if let Some(f) = logerr { f(&format!("Erreur en lisant le 3ème interet: {}", s)) } }
             }
         }
     }
@@ -405,7 +405,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Interet::from_str(&s) {
                 Ok(interet) => membre.interets[3] = Some(interet),
-                Err(_) => { logerr.map(|f| f(&format!("Erreur en lisant le 4ème interet: {}", s))); }
+                Err(_) => { if let Some(f) = logerr { f(&format!("Erreur en lisant le 4ème interet: {}", s)) } }
             }
         }
     }
@@ -518,7 +518,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
         if let Some(s) = into_string(&ln[col]) {
             match Taille::from_str(&s) {
                 Ok(t) => membre.taille = Some(t),
-                Err(_e) => { logerr.map(|f| f(&format!("Erreur en lisant la taille: {}", s))); }
+                Err(_e) => { if let Some(f) = logerr { f(&format!("Erreur en lisant la taille: {}", s)) } }
             }
         }
     }
@@ -536,7 +536,7 @@ pub fn fill_membre_info(ln: &[DataType], dcc: &DataColConfig, membre: &mut Membr
     }
 }
 
-pub fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig, logerr: Option<&impl Fn(&str) -> ()>) -> Result<Compte, ExtractError> {
+pub fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig, logerr: Option<&impl Fn(&str)>) -> Result<Compte, ExtractError> {
     let mut cmpt = Compte::default();
     let col_mandataire = match dcc.mandataire {
         None => return Err(ExtractError::MissingInformations("Mandataire")),
@@ -554,7 +554,7 @@ pub fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig, logerr: Option<
         let t = into_string(&ln[col_tel]).map(|s| Tel::from_str(&s).ok());
         cmpt.tel = t.unwrap_or_default();
         if cmpt.tel.is_none() {
-            logerr.map(|f| f(&format!("N'a pu lire le numéro de téléphone pour le compte '{}'", cmpt.mandataire)));
+            if let Some(f) = logerr { f(&format!("N'a pu lire le numéro de téléphone pour le compte '{}'", cmpt.mandataire)) }
         }
     }
     if let Some(col_adr) = dcc.adresse {
@@ -584,18 +584,14 @@ pub fn into_string(data: &DataType) -> O<String> {
     ret
 }
 pub fn into_int(data: &DataType) -> O<i64> {
-    let ret = match data {
+    match data {
         DataType::Int(i) => Some(*i),
         DataType::Float(f) => Some(*f as i64),
-        DataType::String(s) => match s.parse() {
-            Ok(n) => Some(n),
-            Err(_) => None,
-        },
+        DataType::String(s) => s.parse().ok(),
         DataType::Bool(b) => Some(i64::from(*b)),
         DataType::Error(_) => None,
         DataType::Empty => None,
-    };
-    ret
+    }
 }
 pub fn into_bool(data: &DataType) -> O<bool> {
     match data {

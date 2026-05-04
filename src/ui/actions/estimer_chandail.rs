@@ -1,10 +1,10 @@
-use std::{collections::HashMap, ffi::os_str::Display, sync::{Arc, Mutex}, thread::JoinHandle};
+use std::{collections::HashMap, sync::{Arc, Mutex}, thread::JoinHandle};
 
 use ratatui::{buffer::Buffer, layout::Rect, style::{Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 
 use crossterm::event as cte;
 
-use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, Poll, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{InfoScreen, LineInputScreen, Menu, MenuItem}}};
+use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, Poll, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{Menu, MenuItem}}};
 
 pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let menu_size = {
@@ -197,7 +197,7 @@ impl Screen for ChandailScreen {
 							},
 							Ok(Ok(hash_map)) => {
 								let mut results = hash_map.into_iter().collect::<Vec<_>>();
-								results.sort_by(|a, b| a.cmp(b));
+								results.sort();
 								self.results = Some(results);
 							},
 							Ok(Err(e)) => {

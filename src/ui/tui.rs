@@ -1,11 +1,11 @@
-use std::{io::{self, stdout}, panic};
+use std::io::{self};
 
-use crossterm::{event::{DisableMouseCapture, EnableMouseCapture}, execute, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode}};
+use crossterm::{event::DisableMouseCapture, execute, terminal::{self, LeaveAlternateScreen}};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 
 pub type CrosstermTerminal = Terminal<CrosstermBackend<std::io::Stdout>>;
 
-use crate::ui::{self, app::App, event::EventHandler};
+use crate::ui::{app::App, event::EventHandler};
 
 #[derive(Debug)]
 pub enum TuiError {
@@ -31,13 +31,8 @@ pub struct Tui {
 }
 
 impl Tui {
-	pub fn new(terminal: CrosstermTerminal, events: EventHandler) -> Self {
-		Tui {
-			terminal,
-			events,
-		}
-	}
-	pub fn enter(&mut self) -> Result<(), TuiError> {
+	pub fn enter() -> Result<Self, TuiError> {
+		/*
 		terminal::enable_raw_mode()?;
 		execute!(io::stderr(), EnterAlternateScreen, EnableMouseCapture)?;
 
@@ -46,10 +41,13 @@ impl Tui {
 			Self::reset().expect("Failed to reset terminal on panic");
 			panic_hook(panic_info);
 		}));
+		*/
 
-		self.terminal.hide_cursor()?;
-		self.terminal.clear()?;
-		Ok(())
+		//self.terminal.hide_cursor()?;
+		//self.terminal.clear()?;
+		let terminal = ratatui::init();
+		let events = EventHandler::new(250);
+		Ok(Self { terminal, events })
 	}
 	pub fn reset() -> Result<(), TuiError> {
 		terminal::disable_raw_mode()?;
@@ -57,8 +55,11 @@ impl Tui {
 		Ok(())
 	}
 	pub fn exit(&mut self) -> Result<(), TuiError> {
-		Self::reset()?;
-		self.terminal.show_cursor()?;
+		// end the event loop
+		self.events.end();
+		ratatui::restore();
+		//Self::reset()?;
+		//self.terminal.show_cursor()?;
 		Ok(())
 	}
 	pub fn draw(&mut self, app: &App) -> Result<(), TuiError> {

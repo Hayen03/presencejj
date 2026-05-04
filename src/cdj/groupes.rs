@@ -18,6 +18,29 @@ lazy_static!{
     pub static ref NULL_GROUPE: Groupe = Groupe::default();
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SousGroupeError {
+    MembreInexistant(MembreID),
+    TropDeMembres(usize),
+}
+impl SousGroupeError {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SousGroupeError::MembreInexistant(_) => "Membre Inexistant",
+            SousGroupeError::TropDeMembres(_) => "Trop de membres",
+        }
+    }
+}
+impl std::fmt::Display for SousGroupeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.as_str(), match self {
+            SousGroupeError::MembreInexistant(mid) => mid.to_string(),
+            SousGroupeError::TropDeMembres(n) => format!("{} restant", n),
+        })
+    }
+}
+impl std::error::Error for SousGroupeError {}
+
 #[derive(Debug, Clone, Default)]
 pub struct Groupe {
     pub id: GroupeID,
@@ -46,12 +69,12 @@ impl Groupe {
             ..Self::default()
         }
     }
-    pub fn get_saison(&self) -> O<&str> {self.saison.as_ref().map(String::as_str)}
-    pub fn get_site(&self) -> O<&str> {self.site.as_ref().map(String::as_str)}
-    pub fn get_category(&self) -> O<&str> {self.category.as_ref().map(String::as_str)}
-    pub fn get_discriminant(&self) -> O<&str> {self.discriminant.as_ref().map(String::as_str)}
+    pub fn get_saison(&self) -> O<&str> {self.saison.as_deref()}
+    pub fn get_site(&self) -> O<&str> {self.site.as_deref()}
+    pub fn get_category(&self) -> O<&str> {self.category.as_deref()}
+    pub fn get_discriminant(&self) -> O<&str> {self.discriminant.as_deref()}
    //pub fn get_animateur(&self) -> O<&str> {self.animateur.as_ref().map(String::as_str)}
-    pub fn get_semaine(&self) -> O<&str> {self.semaine.as_ref().map(String::as_str)}
+    pub fn get_semaine(&self) -> O<&str> {self.semaine.as_deref()}
 
     pub fn has_participant(&self, mid: MembreID) -> bool {
         self.participants.contains(&mid)
@@ -81,7 +104,7 @@ impl Groupe {
         hasher.finish() as u32
     }
 
-    pub fn mk_sous_groupes(&mut self, nb_sg: usize, membres: &MembreReg) -> Result<(), ()> {
+    pub fn mk_sous_groupes(&mut self, nb_sg: usize, membres: &MembreReg) -> Result<(), SousGroupeError> {
         let old_sg = self.sous_groupe.clone();
         self.sous_groupe = Vec::new();
         if nb_sg == 0 { return Ok(()); }
@@ -95,7 +118,7 @@ impl Groupe {
                 },
                 Err(_e) => { // membre inexistant
                     self.sous_groupe = old_sg;
-                    return Err(())
+                    return Err(SousGroupeError::MembreInexistant(*mbr));
                 }, 
             }
         }
@@ -111,14 +134,14 @@ impl Groupe {
             sg.groupe = self.id;
             sg.disc = disc as u32;
             // retirer des candidats les membres ajoutés au sg
-            candidats.retain(|mbr| !sg.contains(*mbr));
+            candidats.retain(|mbr| !sg.contains(mbr));
 
             self.sous_groupe.push(sg);
         }
 
         // Ajouter au sg les candidats restants
         for sg in self.sous_groupe.iter_mut() {
-            while sg.participants.len() < sg_size && candidats.len() > 0 {
+            while sg.participants.len() < sg_size && !candidats.is_empty() {
                 sg.participants.insert(candidats.pop().unwrap().id);
             }
         }
@@ -126,7 +149,7 @@ impl Groupe {
         // S'il reste encore des candidats après ça, on envoie une erreur...
         if !candidats.is_empty() {
             self.sous_groupe = old_sg;
-            return Err(());
+            return Err(SousGroupeError::TropDeMembres(candidats.len()));
         }
 
         Ok(())
@@ -256,6 +279,9 @@ impl GroupeReg {
     pub fn len(&self) -> usize {
         self.reg.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.reg.is_empty()
+    }
     pub fn list_used_category(&self) -> HashSet<String> {
         self.reg.values().filter_map(|g| g.category.clone()).collect()
     }
@@ -306,8 +332,8 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
         None => {
             let mut parts = Vec::from(membres);
             parts.sort_by(|a, b| a.naissance.cmp(&b.naissance));
-            for i in 0..min(nb_participants, parts.len()) {
-                part.insert(parts[i].id);
+            for p in parts.iter().take(min(nb_participants, parts.len())) {
+                part.insert(p.id);
             }
         },
         Some(pro) => {
@@ -315,10 +341,10 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
             // On ne rajoute pas ceux qui l'ont dans le troisième ou quatrième
             let filter_fn = filter_by_interet(pro);
             let sort_fn = sort_by_interet(pro);
-            let mut parts: Vec<&Membre> = membres.iter().filter(|mbr| filter_fn(mbr)).map(|mbr| *mbr).collect();
+            let mut parts: Vec<&Membre> = membres.iter().filter(|mbr| filter_fn(mbr)).copied().collect();
             parts.sort_by(|a, b| sort_fn(a, b));
-            for i in 0..(nb_participants.min(parts.len())) {
-                part.insert(parts[i].id);
+            for p in parts.iter().take(nb_participants.min(parts.len())) {
+                part.insert(p.id);
             }
         },
     }

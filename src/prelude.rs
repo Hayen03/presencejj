@@ -67,7 +67,7 @@ impl DayInMonth for Months {
 	}
 }
 pub fn today() -> Date {
-	chrono::offset::Local::now().date_naive().into()
+	chrono::offset::Local::now().date_naive()
 }
 
 /// provient de https://nick.groenen.me/notes/capitalize-a-string-in-rust/
@@ -81,6 +81,10 @@ pub fn capitalize(s: &str) -> String {
 }
 
 #[allow(clippy::mut_from_ref)]
+/**
+ * # Safety
+ * This function is unsafe because it allows to create a mutable reference from an immutable one, which can lead to undefined behavior if the original reference is still used after the mutable one is created. It is the caller's responsibility to ensure that the original reference is not used after calling this function, and that the mutable reference is not used after the original reference is used again.
+ */
 pub unsafe fn immut2mut_shenanigans<T>(var: &T) -> &mut T {
 	let p: *mut T = (var as *const T) as *mut T;
 	p.as_mut().unwrap()
@@ -142,7 +146,7 @@ pub fn read_int(msg: &str) -> i64 {
 pub fn read_int_option(msg: &str) -> Option<i64> {
 	while {
 		let input: String = dialoguer::Input::new().with_prompt(msg).allow_empty(true).interact_text().expect("Erreur en lisant un nombre");
-		if input == "" {
+		if input.is_empty() {
 			return None;
 		}
 		match input.parse() {
@@ -159,11 +163,27 @@ pub fn read_int_option(msg: &str) -> Option<i64> {
 
 pub fn read_string_option(msg: &str) -> Option<String> {
 	let input: String = dialoguer::Input::new().with_prompt(msg).allow_empty(true).interact_text().expect("Erreur en lisant un nombre");
-	if input == "" {
-		return None;
+	if input.is_empty() {
+		None
 	} else {
-		return Some(input);
+		Some(input)
 	}
 }
 
 pub type Logger<'a> = &'a dyn Fn(&str);
+
+#[derive(Debug)]
+pub struct ErrorMessage {
+	msg: String,
+}
+impl From<&str> for ErrorMessage {
+	fn from(value: &str) -> Self {
+		Self { msg: value.into() }
+	}
+}
+impl std::fmt::Display for ErrorMessage {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.msg)
+	}
+}
+impl std::error::Error for ErrorMessage {}
