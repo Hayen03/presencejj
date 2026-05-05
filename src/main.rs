@@ -31,6 +31,7 @@ enum AppError {
     CancelAction { desc: String },
     Compte { src: CompteErr },
     Input { src: TextInputError },
+    UnexpectedState { desc: String },
 }
 impl From<UIError> for AppError {
     fn from(_src: UIError) -> Self {
@@ -45,6 +46,7 @@ impl From<UIError> for AppError {
             UIError::CancelAction { desc } => AppError::CancelAction { desc },
             UIError::Compte { src } => AppError::Compte { src },
             UIError::Input { src } => AppError::Input { src },
+            UIError::UnexpectedState { desc } => AppError::UnexpectedState { desc },
         }
     }
 }
@@ -76,6 +78,7 @@ impl std::fmt::Display for AppError {
             AppError::CancelAction { desc } => write!(f, "Action cancelled: {}", desc),
             AppError::Compte { src } => write!(f, "Compte error: {}", src),
             AppError::Input { src } => write!(f, "Input error: {}", src),
+            AppError::UnexpectedState { desc } => write!(f, "Unexpected state: {}", desc),
         }
     }
 }
@@ -95,6 +98,7 @@ impl std::error::Error for AppError {
             AppError::Report { report } => None,
             AppError::Panic => None,
             AppError::ExcelError => None,
+            AppError::UnexpectedState { .. } => None,
         }
     }
 }

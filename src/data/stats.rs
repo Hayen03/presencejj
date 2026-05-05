@@ -1,11 +1,10 @@
 use std::{collections::{BTreeSet, HashMap}, fmt::Display, fs::File, hash::Hash};
 
-use console::Term;
 use lazy_static::lazy_static;
 //use rand::rand_core::le;
 use rust_xlsxwriter::{chart::{Chart, ChartDataLabel, ChartType}, workbook::Workbook, worksheet::Worksheet, Color, Format, FormatAlign, FormatBorder, Formula, Table, TableColumn, XlsxError};
 
-use crate::{data::adresse::CodePostal, cdj::{comptes::CompteReg, groupes::{Groupe, GroupeID, GroupeReg}, membres::{MembreID, MembreReg}}};
+use crate::{cdj::{comptes::CompteReg, groupes::{Groupe, GroupeID, GroupeReg}, membres::{MembreID, MembreReg}}, data::adresse::CodePostal, ui::screens::Desc};
 
 static XLSX_SITE_BLOCK_SPACE: u32 = 3; // espace entre les blocs de site dans le fichier excel
 lazy_static!{
@@ -39,12 +38,13 @@ pub struct GroupeStats {
 	pub annulations: usize, 
 	pub liste_attente: usize,
 }
-fn get_group_stats(groupe: &Groupe, do_annulation: bool, do_attente: bool) -> GroupeStats {
+fn get_group_stats(groupe: &Groupe, do_annulation: &dyn Fn(GroupeID, &str) -> Option<usize>, do_attente: &dyn Fn(GroupeID, &str) -> Option<usize>, get_missing_capacite: &dyn Fn(GroupeID, &str) -> usize) -> GroupeStats {
+	let desc = groupe.desc();
 	GroupeStats{
-		capacite: groupe.capacite.unwrap_or_else(|| read_user_input(&format!("Entrez la capacite pour le groupe {}", groupe.desc()), usize_validation)),
+		capacite: groupe.capacite.unwrap_or_else(|| get_missing_capacite(groupe.id, &desc)),
 		inscriptions: groupe.participants.len(),
-		annulations: if do_annulation {read_user_input(&format!("Entrez le nombre d'annulation pour le groupe {}", groupe.desc()), usize_validation)} else {0},
-		liste_attente: if do_attente {read_user_input(&format!("Entrez le nombre de participant sur la liste d'attente pour le groupe {}", groupe.desc()), usize_validation)} else {0},
+		annulations: do_annulation(groupe.id, &desc).unwrap_or(0),
+		liste_attente: do_attente(groupe.id, &desc).unwrap_or(0),
 	}
 }
 
@@ -117,7 +117,7 @@ impl Stats {
 		stats
 	}
 }
-pub fn fill_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, membres: &MembreReg, comptes: &CompteReg, do_annulation: bool, do_attente: bool) -> (Stats, HashMap<GroupeID, GroupeStats>) {
+pub fn fill_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, membres: &MembreReg, comptes: &CompteReg, do_annulation: &dyn Fn(GroupeID, &str) -> Option<usize>, do_attente: &dyn Fn(GroupeID, &str) -> Option<usize>, get_missing_capacite: &dyn Fn(GroupeID, &str) -> usize) -> (Stats, HashMap<GroupeID, GroupeStats>) {
 	let mut mids: BTreeSet<MembreID> = BTreeSet::new();
 	let mut stats = Stats::default();
 	let mut gstats = HashMap::new();
@@ -127,7 +127,7 @@ pub fn fill_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, membres: &MembreR
 			let age_stats = site_stats.ages.entry(groupe.category.clone().unwrap_or_default()).or_default();
 			let sem_stats = age_stats.semaines.entry(groupe.semaine.clone().unwrap_or_default()).or_default();
 			
-			let group_stats = get_group_stats(groupe, do_annulation, do_attente);
+			let group_stats = get_group_stats(groupe, do_annulation, do_attente, get_missing_capacite);
 			gstats.insert(groupe.id, group_stats);
 			sem_stats.capacite += group_stats.capacite;
 			sem_stats.inscriptions += group_stats.inscriptions;
@@ -305,7 +305,7 @@ fn get_group_key(id: GroupeID, groupes: &GroupeReg) -> Gkey {
 		Err(_) => (None, None, None, None, None),
 	}
 }
-pub fn print_stats_to_excel(stats: &Stats, gstats: &HashMap<GroupeID, GroupeStats>, groupes: &GroupeReg, ustats: &UniqueStats, out: &str, term: &Term, err_term: &Term) -> Result<(), StatsError> {
+pub fn print_stats_to_excel(stats: &Stats, gstats: &HashMap<GroupeID, GroupeStats>, groupes: &GroupeReg, ustats: &UniqueStats, out: &str, logger: &dyn Fn(Desc)) -> Result<(), StatsError> {
 	let mut workbook = Workbook::new();
 
 	// adding raw data worksheet
@@ -486,30 +486,6 @@ pub fn print_stats_to_excel(stats: &Stats, gstats: &HashMap<GroupeID, GroupeStat
 	Ok(())
 }
 
-fn read_user_input<T>(prompt: &str, valid: impl Fn(&str) -> Result<T, String>) -> T {
-	loop {
-		let input: Result<String, dialoguer::Error> = dialoguer::Input::new().with_prompt(prompt).interact();
-		match input {
-			Ok(input) => {
-				match valid(&input) {
-					Ok(value) => {return value; },
-					Err(err) => {
-						println!("{}", err);
-					}
-				}
-			},
-			Err(_) => {
-				println!("Entrée invalide, essayez à nouveau.");
-			}
-		}
-	}
-}
-fn usize_validation(input: &str) -> Result<usize, String> {
-	match input.parse::<usize>() {
-		Ok(num) => Ok(num),
-		Err(_) => Err("Veuillez entrer un nombre entier positif.".to_string()),
-	}
-}
 pub fn to_excel_column(mut n: u16) -> String {
     if n == 0 {
         return String::new();
@@ -821,6 +797,13 @@ pub enum Ville {
 	GreenfieldPark,
 }
 impl Ville {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::Longueuil => "Longueuil",
+			Self::StHubert => "Saint-Hubert",
+			Self::GreenfieldPark => "Greenfield Park",
+		}
+	}
 	pub fn code_postaux(&self) -> &'static [&'static str] {
 		match self {
 			Self::Longueuil => &["J4G", "J4H", "J4J", "J4K", "J4L", "J4M", "J4N", "J4P",],
@@ -835,11 +818,7 @@ impl Ville {
 }
 impl Display for Ville {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Longueuil => write!(f, "Longueuil"),
-			Self::StHubert => write!(f, "Saint-Hubert"),
-			Self::GreenfieldPark => write!(f, "Greenfield Park"),
-		}
+		write!(f, "{}", self.as_str())
 	}
 }
 #[derive(Debug, Clone, Default)]

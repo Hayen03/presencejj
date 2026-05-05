@@ -4,7 +4,7 @@ use ratatui::{buffer::Buffer, layout::Rect, style::{Style, Stylize}, symbols::bo
 
 use crossterm::event as cte;
 
-use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, Poll, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{Menu, MenuItem}}};
+use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, PollLine, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{Menu, MenuItem}}};
 
 pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let menu_size = {
@@ -41,7 +41,7 @@ pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResul
 					}
 
 					let prompt = format!("Estimation pour la catégorie '{}': ", cat);
-					let poll = Poll {
+					let poll = PollLine {
 						title: "Estimation de nombre de chandails".into(),
 						prompt: Text::from(prompt),
 						validation: Some(validation_fn.clone()),

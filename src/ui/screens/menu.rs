@@ -19,7 +19,6 @@ impl<Ids> Debug for MenuItem<Ids> where Ids: ToString + Debug {
 	}
 }
 
-#[derive(Debug)]
 pub struct Menu<'a, Ids> where Ids: ToString + Debug {
 	items: Box<[MenuItem<Ids>]>,
 	selected: usize,
@@ -28,6 +27,18 @@ pub struct Menu<'a, Ids> where Ids: ToString + Debug {
 	widget: ratatui::widgets::List<'a>,
 	_block: Block<'a>,
 	fit_width: u16,
+	cancel_action: Option<Box<actions::Action>>,
+}
+impl<Ids> Debug for Menu<'_, Ids> where Ids: ToString + Debug {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Menu")
+			.field("items", &self.items)
+			.field("selected", &self.selected)
+			.field("title", &self.title)
+			.field("size", &self.size)
+			.field("cancel_action", &self.cancel_action.is_some())
+			.finish()
+	}
 }
 impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 	pub fn new(items: Box<[MenuItem<Ids>]>) -> Self {
@@ -39,7 +50,7 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 			.style(Style::new().white())
 			.highlight_style(Style::new().yellow().on_dark_gray())
 			.block(block.clone());
-		Menu { items, selected: 0, title: String::new(), widget, _block: block, size: (ScreenSize::Fill, ScreenSize::Fill), fit_width }
+		Menu { items, selected: 0, title: String::new(), widget, _block: block, size: (ScreenSize::Fill, ScreenSize::Fill), fit_width, cancel_action: None }
 	}
 	pub fn with_title(mut self, title: String) -> Self {
 		self.title = title;
@@ -47,6 +58,10 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 	}
 	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
 		self.size = (width, height);
+		self
+	}
+	pub fn with_cancel_action(mut self, action: Box<actions::Action>) -> Self {
+		self.cancel_action = Some(action);
 		self
 	}
 	pub fn get_selected(&self) -> Option<&MenuItem<Ids>> {
@@ -90,7 +105,13 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 				self.next();
 				Ok(UpdateAction::Continue.one())
 			},
-			KeyCode::Esc => Ok(UpdateAction::Quit.one()),
+			KeyCode::Esc => {
+				if let Some(action) = &self.cancel_action {
+					action(state)
+				} else {
+					Ok(UpdateAction::Pop.one())
+				}
+			},
 			KeyCode::Enter => {
 				if let Some(item) = self.get_selected() {
 					(item.action)(state)

@@ -2,7 +2,7 @@ use std::{any::Any, collections::VecDeque, fmt::Debug, path::PathBuf, sync::{Arc
 
 use ratatui::text::Text;
 
-use crate::{extract::ExtractError, cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, ui::{actions::UpdateActions, event::Event}};
+use crate::{cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
 
 pub mod app;
 pub mod tui;
@@ -37,6 +37,7 @@ pub enum UIError {
 	CancelAction{ desc: String },
 	Compte { src: CompteErr },
 	Input { src: TextInputError },
+	UnexpectedState { desc: String },
 }
 impl From<std::io::Error> for UIError {
 	fn from(src: std::io::Error) -> Self {
@@ -113,6 +114,7 @@ impl std::fmt::Display for UIError {
 			UIError::CancelAction { desc } => write!(f, "Action cancelled: {}", desc),
 			UIError::Compte { src } => write!(f, "Compte error: {}", src),
 			UIError::Input { src } => write!(f, "Input error: {}", src),
+			UIError::UnexpectedState { desc } => write!(f, "Unexpected state: {}", desc),
 		}
 	}
 }
@@ -129,6 +131,7 @@ impl std::error::Error for UIError {
 			UIError::CancelAction { .. } => None,
 			UIError::Compte { src } => Some(src),
 			UIError::Input { src } => Some(src),
+			UIError::UnexpectedState { .. } => None,
 		}
 	}
 }
@@ -226,7 +229,7 @@ pub struct AppState {
 	pub comptes: RwLock<CompteReg>,
 	pub membres: RwLock<MembreReg>,
 	pub theme: RwLock<Theme>,
-	pub polls: RwLock<VecDeque<PollRequest<'static>>>,
+	pub polls: RwLock<VecDeque<PollRequest>>,
 }
 impl Default for AppState {
 	fn default() -> Self {
@@ -277,13 +280,13 @@ impl AppState {
 }
 
 #[derive(Clone, Default)]
-pub struct Poll<'a> {
+pub struct PollLine<'a> {
 	pub title: String,
 	pub prompt: Text<'a>,
 	pub validation: Option<crate::ui::screens::TextInputValidation>,
 	pub show_error: bool,
 }
-impl Debug for Poll<'_> {
+impl Debug for PollLine<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Poll")
 			.field("title", &self.title)
@@ -293,7 +296,7 @@ impl Debug for Poll<'_> {
 			.finish()
 	}
 }
-impl<'a> Poll<'a> {
+impl<'a> PollLine<'a> {
 	pub fn with_title(mut self, title: String) -> Self {
 		self.title = title;
 		self
@@ -315,27 +318,27 @@ impl<'a> Poll<'a> {
 		self
 	}
 }
-impl Poll<'static> {
+impl PollLine<'static> {
 	pub fn poll(self, state: Arc<AppState>) -> Result<Option<String>, RecvError> {
 		let (send, recv) = std::sync::mpsc::channel::<Option<String>>();
-		let poll_request = PollRequest {
+		let poll_request = PollLineRequest {
 			data: self,
 			answer_to: send,
 		};
-		state.polls.write().expect("Poisoned Lock").push_back(poll_request);
+		state.polls.write().expect("Poisoned Lock").push_back(PollRequest::Line(poll_request));
 		recv.recv()
 	}
 }
 
 
-pub struct PollRequest<'a> {
-	pub data: Poll<'a>,
+pub struct PollLineRequest<'a> {
+	pub data: PollLine<'a>,
 	pub answer_to: std::sync::mpsc::Sender<Option<String>>,
 }
-impl<'a> PollRequest<'a> {
+impl<'a> PollLineRequest<'a> {
 	pub fn new(answer_to: std::sync::mpsc::Sender<Option<String>>) -> Self {
 		Self {
-			data: Poll::default(),
+			data: PollLine::default(),
 			answer_to,
 		}
 	}
@@ -381,7 +384,7 @@ impl<'a> PollRequest<'a> {
 		}
 	}
 }
-impl Debug for PollRequest<'_> {
+impl Debug for PollLineRequest<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Poll")
 			.field("title", &self.data.title)
@@ -390,4 +393,73 @@ impl Debug for PollRequest<'_> {
 			.field("show_error", &self.data.show_error)
 			.finish()
 	}
+}
+
+#[derive(Debug)]
+pub struct PollMenu {
+	choices: Vec<Arc<str>>,
+	title: String,
+}
+impl PollMenu {
+	pub fn new(title: String, choices: impl Into<Vec<Arc<str>>>) -> Self {
+		Self {
+			title,
+			choices: choices.into(),
+		}
+	}
+	pub fn poll(self, state: Arc<AppState>) -> Option<Arc<str>> {
+		let (sender, receiver) = std::sync::mpsc::channel::<Option<Arc<str>>>();
+		let request = PollMenuRequest {
+			data: self,
+			answer_to: sender,
+		};
+		state.polls.write().expect("Poisoned Lock").push_back(PollRequest::Menu(request));
+		receiver.recv().ok().flatten()
+	} 
+	pub fn poll_bool(title: String, state: Arc<AppState>) -> Option<bool> {
+		let choices = vec!["Oui".into(), "Non".into()];
+		let menu = Self::new(title, choices);
+		match menu.poll(state) {
+			Some(choice) if choice.as_ref() == "Oui" => Some(true),
+			Some(choice) if choice.as_ref() == "Non" => Some(false),
+			_ => None,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct PollMenuRequest {
+	pub data: PollMenu,
+	pub answer_to: std::sync::mpsc::Sender<Option<Arc<str>>>,
+}
+impl PollMenuRequest {
+	pub fn into_screen(self) -> Menu<'static, Arc<str>> {
+		let items = self.data.choices.into_iter().map(|choice| {
+			let answer_to = self.answer_to.clone();
+			MenuItem {
+				id: choice.clone(),
+				action: Box::new(move |_| {
+					match answer_to.send(Some(choice.clone())) {
+						Ok(_) => Ok(UpdateAction::Pop.one()),
+						Err(e) => Ok(UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: Box::new(e.to_string()) })).one()),
+					}
+				}),
+			}
+		}).collect();
+		Menu::new(items)
+			.with_cancel_action(Box::new(move |_| {
+				match self.answer_to.send(None) {
+					Ok(_) => Ok(UpdateAction::Pop.one()),
+					Err(e) => Ok(UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: Box::new(e.to_string()) })).one()),
+				}
+			}))
+			.with_title(self.data.title)
+	}
+}
+
+
+#[derive(Debug)]
+pub enum PollRequest {
+	Line(PollLineRequest<'static>),
+	Menu(PollMenuRequest),
 }

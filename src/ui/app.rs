@@ -2,7 +2,7 @@ use std::{io::Write, sync::Arc};
 
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
 
-use crate::ui::{AppState, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::ErrorScreen, tui::Tui};
+use crate::ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::ErrorScreen, tui::Tui};
 use crate::ui::actions;
 use crate::ui::screens::{Menu, MenuItem};
 
@@ -103,8 +103,11 @@ impl App {
 		if !self.state.polls.read().expect("Poisoned Lock").is_empty() {
 			let mut polls = self.state.polls.write().expect("Poisoned Lock");
 			while let Some(poll) = polls.pop_front() {
-				let screen = poll.to_line_input_screen();
-				self.sub_screen_stack.push(Box::new(screen));
+				let screen = match poll {
+					PollRequest::Line(poll) => Box::new(poll.to_line_input_screen()) as Box<dyn Screen>,
+					PollRequest::Menu(poll) => Box::new(poll.into_screen()) as Box<dyn Screen>,
+				};
+				self.sub_screen_stack.push(screen);
 			}
 		}
 		let events = self.update_current_screen(event)?;

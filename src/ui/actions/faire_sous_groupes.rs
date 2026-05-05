@@ -40,7 +40,7 @@ pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionRes
 				Some(nb_sg)
 			} else {
 				log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Le nombre de sous-groupes pour le groupe '{}' est inconnu, demande à l'utilisateur...", plan.desc)));
-				let poll = crate::ui::Poll {
+				let poll = crate::ui::PollLine {
 					title: "Nombre de sous-groupes manquant".into(),
 					prompt: Text::from(format!("Entrez le nombre de sous groupes pour le groupe {} (nombre de participant: {})", plan.desc, plan.participants)),
 					validation: Some(Arc::new(|s| s.parse::<usize>().is_ok())),
