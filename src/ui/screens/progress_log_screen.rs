@@ -5,9 +5,9 @@ use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::bo
 use crate::ui::{Screen, UIError, screens::{Logger, ScrollMode}};
 
 #[derive(Debug)]
-pub struct ProgressLogScreen {
+pub struct ProgressLogScreen<'a> {
 	scroll_mode: Cell<ScrollMode>,
-	logger: Arc<Mutex<Logger>>,
+	logger: Arc<Mutex<Logger<'a>>>,
 	target: u32,
 	progress: Arc<Mutex<u32>>,
 	title: String,
@@ -15,7 +15,7 @@ pub struct ProgressLogScreen {
 	cancel_hook: Arc<Mutex<bool>>, // to cancel the thread early
 	max_scroll: Cell<usize>,
 }
-impl ProgressLogScreen {
+impl<'a> ProgressLogScreen<'a> {
 	pub fn new(title: String, target: u32) -> Self {
 		Self {
 			scroll_mode: Cell::new(ScrollMode::Auto),
@@ -28,7 +28,7 @@ impl ProgressLogScreen {
 			max_scroll: Cell::new(0),
 		}
 	}
-	pub fn get_logger(&self) -> Arc<Mutex<Logger>> {
+	pub fn get_logger(&self) -> Arc<Mutex<Logger<'a>>> {
 		self.logger.clone()
 	}
 	pub fn ratio(&self) -> f64 {
@@ -54,7 +54,7 @@ impl ProgressLogScreen {
 	}
 }
 
-impl WidgetRef for ProgressLogScreen {
+impl WidgetRef for ProgressLogScreen<'_> {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 		Clear.render(area, buf);
 
@@ -113,7 +113,7 @@ impl WidgetRef for ProgressLogScreen {
 		self.max_scroll.set(max_scroll);
 	}
 }
-impl Screen for ProgressLogScreen {
+impl Screen for ProgressLogScreen<'_> {
 	fn handle_event(&mut self, event: crate::ui::event::Event, _state: Arc<crate::ui::AppState>) -> Result<crate::ui::UpdateActions, crate::ui::UIError> {
 		match event {
 			crate::ui::event::Event::Key(key) => {

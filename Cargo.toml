@@ -30,8 +30,11 @@ unicode-segmentation = "1.13"
 # unicode-width = "0.2.*"
 # ratatui_input = "0.1"
 ratatui-textarea = "*"
-typst-bake = "0.1.9"
+# typst-bake = "0.1.9"
+typst-as-lib = "0.15.4"
+typst = "0.14.2"
+typst-pdf = "0.14.2"
 
-[package.metadata.typst-bake]
-template-dir = "./templates"
-fonts-dir = "./fonts"
+# [package.metadata.typst-bake]
+# template-dir = "./templates"
+# fonts-dir = "./fonts"

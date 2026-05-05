@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ratatui::text::Text;
 
-use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, ui::{AppState, screens::{Desc, ProgressLogScreen}}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, ui::{AppState, UIError, screens::{Desc, ProgressLogScreen}}};
 
 pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 
@@ -34,7 +34,7 @@ pub fn faire_sous_groupes(state: Arc<AppState>) -> crate::ui::actions::ActionRes
 			// early stopping if cancel requested
 			if *cancel_hook.lock().expect("Poisoned Lock") {
 				log_hook.lock().expect("Poisoned Lock").log(Desc::Warning("Création des sous-groupes annulée".into()));
-				return Ok(());
+				return Err(UIError::CancelAction { desc: "La tâche a été annulée.".into() });
 			}
 			let nb = if let Some(nb_sg) = plan.nb_sg {
 				Some(nb_sg)

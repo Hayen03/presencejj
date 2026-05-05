@@ -37,7 +37,7 @@ pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResul
 				for cat in cats {
 					// early cancel if requested
 					if *cancel_hook.lock().expect("Poisoned Lock") {
-						return Ok(HashMap::new());
+						return Err(UIError::CancelAction { desc: "La tâche a été annulée.".into() });
 					}
 
 					let prompt = format!("Estimation pour la catégorie '{}': ", cat);
@@ -147,11 +147,14 @@ impl Screen for ChandailScreen {
 						if let Some(handle) = self.thread_handle.take() {
 							let res = handle.join();
 							match res {
-								Err(e) => {
-									Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: e })).one())
+								Err(e) => { // thread panicked
+									Ok(vec![crate::ui::UpdateAction::Pop, crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: e }))])
 								},
-								Ok(_hash_map) => {
+								Ok(Ok(_hash_map)) => {
 									Ok(crate::ui::UpdateAction::Pop.one())
+								},
+								Ok(Err(e)) => { // thread finished with error
+									Ok(vec![crate::ui::UpdateAction::Pop, crate::ui::UpdateAction::ErrorPopUp(Box::new(e))])
 								},
 							}
 						} else {

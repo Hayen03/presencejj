@@ -1,51 +1,50 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, path::PathBuf};
 
-use console::style;
 
-use crate::{cdj::{comptes::NULL_COMPTE, membres::MembreID}, cli::{ProgramData, actions::ActionResult}, prelude::ErrorMessage, print::typst::print_fiche_med};
+use crate::{cdj::{comptes::NULL_COMPTE, groupes::NULL_GROUPE, membres::MembreID}, cli::{ProgramData, actions::ActionResult}, prelude::ErrorMessage, print::typst::print_fiche_med, ui::screens::Desc};
 
 
 pub fn print_fiche_santes(program: &ProgramData) -> ActionResult {
 
     // Obtenir le dossier de sortie
-    let out_dir = program.get_out_dir("Sélectionnez le dossier de sortie");
-    if out_dir.is_none() {
+    let out_dir = program.get_out_dir("Sélectionnez le dossier de sortie").map(PathBuf::from);
+    let out_dir = if let Some(p) = out_dir {
+        p
+    } else {
         let _ = program.err.write_line("Aucun dossier de sortie sélectionné.");
         return Err(Box::new(ErrorMessage::from("Aucun dossier de sortie sélectionné.")).into());
-    }
+    };
+    let logger = |msg: Desc| {
+        let _ = program.out.write_line(msg.as_str());
+    };
 
     // identifie quel enfant est sur quel site
-    let mut site_mbrs: HashMap<&str, HashSet<MembreID>> = HashMap::new();
-    for grp in program.groupes.groupes() {
-        let set = {
-            let site = grp.site.as_deref().unwrap_or("None");
-            if !site_mbrs.contains_key(site) {
-                site_mbrs.insert(site, HashSet::new());
+    let mut site_mbrs: HashMap<MembreID, HashSet<(&str, &str)>> = HashMap::new();
+    {
+        let groupes = &program.groupes;
+        for grp in groupes.groupes().filter(|g| g.id != NULL_GROUPE.id) {
+            let site = grp.get_site().unwrap_or("None");
+            let saison = grp.get_saison().unwrap_or("None");
+            for participant in grp.participants.iter() {
+                site_mbrs.entry(*participant).or_default().insert((saison, site));
             }
-            site_mbrs.get_mut(site).unwrap()
-        };
-        for part in grp.participants.iter() {
-            set.insert(*part);
         }
     }
-
-    // imprime les fiches med par site
-    for (site, parts) in site_mbrs {
-        for mid in parts {
-            if let Ok(membre) = program.membres.get(mid) {
-                let compte = program.comptes.get(membre.compte.unwrap_or_default()).unwrap_or(&NULL_COMPTE);
-
-                let _res = print_fiche_med(membre, compte, &program.config, site, false, out_dir.as_deref());
-                match _res {
-                    Ok(_) => {
-                        let _ = program.out.write_line(&format!("{}", style(format!("Impression de la fiche santé de [{} {}]", &membre.prenom, &membre.nom)).cyan()));
-                    },
-                    Err(_e) => {
-                        let _ = program.err.write_line(&format!("{}", style(format!("Échec lors de l'impression de la fiche santé de [{} {}]", &membre.prenom, &membre.nom)).red()));
-                    },
+    // imprimer les fiches santés
+    for (mid, _sites) in site_mbrs {
+        { // block to auto drop the locks after usage
+            let disc = _sites.into_iter().collect::<Vec<(&str, &str)>>();
+            let membres = &program.membres;
+            let comptes = &program.comptes;
+            let config = &program.config;
+            if let Ok(membre) = membres.get(mid) {
+                let compte = comptes.get(membre.compte.unwrap_or_default()).unwrap_or(&NULL_COMPTE);
+                let _res = print_fiche_med(membre, compte, config, &disc, false, out_dir.to_str(), &logger);
+                if let Err(err) = _res {
+                    logger(Desc::Error(format!("Erreur lors de l'impression de la fiche santé pour {mid}: {err}")));
                 }
             } else {
-                let _ = program.err.write_line(&format!("{}", style(format!("Membre {mid} inexistant")).red()));
+                logger(Desc::Error(format!("Membre {mid} inexistant")));
             }
         }
     }

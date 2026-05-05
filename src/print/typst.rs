@@ -1,12 +1,20 @@
 use chrono::{Datelike, Local};
 
-use crate::{config::Config, data::cam::CAM, cdj::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}};
+use crate::{cdj::{comptes::{Compte, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeReg, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}, config::Config, data::cam::CAM, ui::screens::Desc};
 
 use super::PrintError;
 use core::str;
-use std::{collections::HashSet, fmt::Display, fs::OpenOptions, process::Command};
+use std::{collections::HashSet, fmt::Display, process::Command};
 
-use std::io::Write;
+
+//use typst_bake as typst;
+use typst_as_lib as tylib;
+use typst::{self};
+
+static TEMPLATE_FILE: &str = include_str!("../../templates/template.typ");
+static JJ_LOGO: &[u8] = include_bytes!("../../templates/doc_skia.png");
+static MONTSERRAT_REGULAR: &[u8] = include_bytes!("../../templates/fonts/Montserrat-Regular.ttf");
+static MONTSERRAT_BOLD: &[u8] = include_bytes!("../../templates/fonts/Montserrat-Bold.ttf");
 
 pub enum Delimiter {
 	Quotes,
@@ -28,29 +36,14 @@ pub fn po<T: Display>(obj: Option<T>, delimiter: Delimiter) -> String {
 	}
 }
 
-pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: &str, update: bool, out_dir: Option<&str>) -> Result<(), PrintError> {
-	// calcul le nom du fichier de sortie
-	let root_dir = out_dir.unwrap_or(&config.out_dir);
-	let dir = format!("{}/fiche_med/{}", root_dir, site);
-	let out_file = format!("{}/fichemed_{}_{}.pdf", dir, membre.nom, membre.prenom);
-
-	// make sure the directory exists
-	let _ = std::fs::create_dir_all(dir);
-
-	// leave early if no update and file arlready exists
-	if !update {
-		if let Ok(true) = std::path::Path::new(&out_file).try_exists() {
-  			return Ok(())
-  		}
-	}
-
+pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, sites: &[(&str, &str)], update: bool, out_dir: Option<&str>, logger: &dyn Fn(Desc)) -> Result<(), PrintError> {
 	// ouvre le fichier temporaire
-	let tmp_file_dir = format!("{}/templates", config.working_dir);
-	let _ = std::fs::create_dir_all(&tmp_file_dir);
-	let tmp_file_path = format!("{}/tmp.typ", tmp_file_dir);
-	let mut file = OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path).expect("Could not open temporary file");
+	//let tmp_file_dir = format!("{}/templates", config.working_dir);
+	//let _ = std::fs::create_dir_all(&tmp_file_dir);
+	//let tmp_file_path = format!("{}/tmp.typ", tmp_file_dir);
+	//let mut file = OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path).expect("Could not open temporary file");
 
-	let _ = write!(file, 
+	let src = format!(
 "#import \"template.typ\": *
 #let enfant = {mbr}
 #show: it => fiche_med( it,
@@ -60,20 +53,55 @@ pub fn print_fiche_med(membre: &Membre, compte: &Compte, config: &Config, site: 
 		mbr=mk_membre(membre, compte),
 	);
 	
-	drop(file);
-	
+	/*
 	let res = print_typst(config, &tmp_file_path, &out_file);
 	if let Err(e) = res {
 		println!("Error printing presence SDJ: {:?}", e);
 		return Err(e);
 	}
+	*/
+	let doc = tylib::TypstEngine::builder()
+		.with_static_file_resolver([("doc_skia.png", JJ_LOGO)])
+		.fonts([
+			MONTSERRAT_BOLD,
+			MONTSERRAT_REGULAR,
+		])
+		.with_static_source_file_resolver([
+			("main.typ", src.as_str()),
+			("template.typ", TEMPLATE_FILE),
+		])
+		.build().compile::<&str, typst::layout::PagedDocument>("main.typ").output?;
+	let options = Default::default();
+	let pdf = typst_pdf::pdf(&doc, &options)?;
 
-	std::fs::remove_file(tmp_file_path).unwrap();
+	let root_dir = out_dir.unwrap_or(&config.out_dir);
+	for (saison, site) in sites {
+		// calcul le nom du fichier de sortie
+		let dir = format!(
+			"{root_dir}/{saison}/{site}/fiche_med",
+			root_dir=root_dir.replace(" ", "-"),
+			saison=saison.replace(" ", "-"),
+			site=site.replace(" ", "-"),
+		);
+		let out_file = format!("{dir}/fichemed_{}_{}.pdf", membre.nom, membre.prenom);
+
+		// make sure the directory exists
+		let _ = std::fs::create_dir_all(dir);
+
+		// leave early if no update and file arlready exists
+		if update || !std::path::Path::new(&out_file).exists() {
+			if let Err(e) = std::fs::write(&out_file, &pdf) {
+				logger(Desc::Error(format!("Écriture du fichier {out_file} a échoué: {e}")));
+			} else {
+				logger(Desc::Info(format!("Écriture du fichier {out_file}")));
+			}
+		}
+	}
 	Ok(())
 }
 
-pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>) -> Result<(), PrintError> {
-	print!("Attempting {} => ", groupe.short_desc());
+pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>, logger: &dyn Fn(Desc)) -> Result<(), PrintError> {
+	//print!("Attempting {} => ", groupe.short_desc());
 	let root = out_dir.unwrap_or(&config.out_dir);
 	// calcul le nom du fichier de sortie
 	let dir = format!("{out}/{saison}/{site}/anim/sem{semaine}", 
@@ -91,11 +119,12 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 		num=sous_groupe.map(|sg| sg.disc).as_ref().map(u32::to_string).unwrap_or("none".into()).replace(" ", "-"),
 		profil=sous_groupe.map(|sg| sg.profil.as_ref()).unwrap_or(None).map(Interet::as_str).unwrap_or("none").replace(" ", "-"),
 	).replace(" ", "-");
-	let out_file = format!("{dir}/{filename}", dir=dir, filename=out_filename);
+	let out_file = format!("{dir}/{out_filename}");
 
 	// make sure the directory exists
 	let _ = std::fs::create_dir_all(dir);
 
+	/*
 	// ouvre le fichier temporaire
 	let tmp_file_dir = format!("{}/templates", config.working_dir);
 	let _ = std::fs::create_dir_all(&tmp_file_dir);
@@ -104,8 +133,9 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 		Ok(f) => f,
 		Err(_e) => return Err(PrintError::TempFileError), // TODO better error handling
 	};
+	*/
 
-	let _ = write!(file, 
+	let mut src = format!(
 "#import \"template.typ\": *
 #let grp = {grp}
 #let participants = (
@@ -118,23 +148,39 @@ pub fn print_presence_anim(groupe: &Groupe, sous_groupe: Option<&SousGroupe>, me
 	for membre in ps.iter() {
 		//let membre = membres.get(*participant).expect("Participant non existant");
 		let compte = membre.compte.map(|c| comptes.get(c).expect("Compte non existant")).unwrap_or(&NULL_COMPTE);
-		let _ = writeln!(file, "{mbr},", mbr=mk_membre(membre, compte));
+		let to_add = format!("{mbr},\n", mbr=mk_membre(membre, compte));
+		src.push_str(&to_add);
 	}
-	let _ = write!(file, 
+	src.push_str(
 ")
 #show: it => presence_anim(it, groupe: grp, participants: participants)
 ");
-	
+	/*
 	drop(file);
-	
 	let res = print_typst(config, &tmp_file_path, &out_file);
 	if let Err(e) = res {
 		println!("Error printing presence SDJ: {:?}", e);
 		return Err(e);
 	}
+	*/
 
-	std::fs::remove_file(tmp_file_path).unwrap();
-	println!("Wrote {}", out_file);
+	let doc = tylib::TypstEngine::builder()
+		.with_static_file_resolver([("doc_skia.png", JJ_LOGO)])
+		.fonts([
+			MONTSERRAT_BOLD,
+			MONTSERRAT_REGULAR,
+		])
+		.with_static_source_file_resolver([
+			("main.typ", src.as_str()),
+			("template.typ", TEMPLATE_FILE),
+		])
+		.build().compile::<&str, typst::layout::PagedDocument>("main.typ").output?;
+	let options = Default::default();
+	let pdf = typst_pdf::pdf(&doc, &options)?;
+	std::fs::write(&out_file, pdf)?;
+
+	//std::fs::remove_file(tmp_file_path).unwrap();
+	logger(Desc::Info(format!("Wrote {}", out_file)));
 	Ok(())
 }
 
@@ -152,7 +198,7 @@ fn filter_grp(grp: &Groupe, info: &PresenceSDJInfo) -> bool {
 fn get_mbr_sg(mid: MembreID, grp: &Groupe) -> Option<&SousGroupe> {
 	grp.sous_groupe.iter().find(|&sg| sg.participants.contains(&mid)).map(|v| v as _)
 }
-pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>) -> Result<(), PrintError> {
+pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: &MembreReg, comptes: &CompteReg, config: &Config, out_dir: Option<&str>, logger: &dyn Fn(Desc)) -> Result<(), PrintError> {
 	let root = out_dir.unwrap_or(&config.out_dir);
 	let out_dir = format!("{out}/{saison}/{site}/sdj", 
 		out=root, 
@@ -168,13 +214,14 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 	let out_file = format!("{dir}/{file}", dir=out_dir, file=out_filename);
 	let _ = std::fs::create_dir_all(out_dir);
 
+	/*
 	// ouvre le fichier temporaire
 	let tmp_file_dir = format!("{}/templates", config.working_dir);
 	let _ = std::fs::create_dir_all(&tmp_file_dir);
 	let tmp_file_path = format!("{}/tmp{}.typ", tmp_file_dir, out_filebase);
 	let mut file = OpenOptions::new().write(true).truncate(true).create(true).open(&tmp_file_path).expect("Could not open temporary file");
-
-	let _ = write!(file,
+	*/
+	let mut src = format!(
 "#import \"template.typ\": *
 #let site = {site}
 #let saison = {saison}
@@ -201,17 +248,18 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 			};
 			let cat = grp.category.as_ref();
 			let disc = grp.discriminant.as_ref();
-			let _ = writeln!(file, 
-"\"{mid}\": new_groupe(categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, profil: {profil}),",
+			let to_add = format!( 
+"\"{mid}\": new_groupe(categorie: {categorie}, discriminant: {discriminant}, animateur: {animateur}, profil: {profil}),\n",
 				mid=p,
 				categorie=po(cat, Delimiter::Brackets),
 				discriminant=po(disc, Delimiter::Brackets),
 				animateur=po(anim, Delimiter::Brackets),
 				profil=po(profil, Delimiter::Brackets),
 			);
+			src.push_str(&to_add);
 		}
 	}
-	let _ = write!(file, 
+	src.push_str( 
 ")
 #let participants = (
 "
@@ -220,9 +268,10 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 	participants.sort_by(|arg0: &&Membre, other: &&Membre| Membre::cmp_nom(arg0, other));
 	for membre in participants.iter() {
 		let compte = membre.compte.map(|c| comptes.get(c).expect("Compte non existant")).unwrap_or(&NULL_COMPTE);
-		let _ = writeln!(file,"{},", mk_membre(membre, compte));
+		let to_add = format!("{},\n", mk_membre(membre, compte));
+		src.push_str(&to_add);
 	}
-	let _ = write!(file, 
+	src.push_str( 
 ")
 #show: it => presence_sdj(
 	site: site,
@@ -232,16 +281,32 @@ pub fn print_presence_sdj(info: &PresenceSDJInfo, groupes: &GroupeReg, membres: 
 	participants: participants,
 )");
 
+	/*
 	drop(file);
-
 	let res = print_typst(config, &tmp_file_path, &out_file);
 	if let Err(e) = res {
 		println!("Error printing presence SDJ: {:?}", e);
 		return Err(e);
 	}
+	*/
 
-	std::fs::remove_file(tmp_file_path).unwrap();
-	println!("Wrote {}", out_file);
+	let doc = tylib::TypstEngine::builder()
+		.with_static_file_resolver([("doc_skia.png", JJ_LOGO)])
+		.fonts([
+			MONTSERRAT_BOLD,
+			MONTSERRAT_REGULAR,
+		])
+		.with_static_source_file_resolver([
+			("main.typ", src.as_str()),
+			("template.typ", TEMPLATE_FILE),
+		])
+		.build().compile::<&str, typst::layout::PagedDocument>("main.typ").output?;
+	let options = Default::default();
+	let pdf = typst_pdf::pdf(&doc, &options)?;
+	std::fs::write(&out_file, pdf)?;
+
+	//std::fs::remove_file(tmp_file_path).unwrap();
+	logger(Desc::Info(format!("Wrote {}", out_file)));
 	Ok(())
 }
 
@@ -343,7 +408,8 @@ fn mk_groupe(groupe: &Groupe, sous_groupe: Option<&SousGroupe>) -> String {
 	)
 }
 
-fn print_typst(config: &Config, tmp_file_path: &str, out_file: &str) -> Result<(), PrintError> {
+#[allow(dead_code)]
+fn print_typst(config: &Config, tmp_file_path: &str, out_file: &str, logger: &dyn Fn(Desc)) -> Result<(), PrintError> {
 	let mut cmd = Command::new("typst");
 	cmd
 	.current_dir(&config.typst_working_dir)
@@ -355,7 +421,7 @@ fn print_typst(config: &Config, tmp_file_path: &str, out_file: &str) -> Result<(
 			.expect("failed to execute process");
 	let err = unsafe {str::from_utf8_unchecked(&output.stderr)}.trim();
 	if !err.is_empty() {
-		println!("{}", err);
+		logger(Desc::Error(err.to_string()));
 	}
 	//std::fs::remove_file(tmp_file_path).unwrap();
 	Ok(())

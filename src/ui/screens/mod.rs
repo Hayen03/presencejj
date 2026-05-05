@@ -11,7 +11,7 @@ pub use progress_log_screen::*;
 pub use info_screen::*;
 pub use input_screen::*;
 pub use menu::*;
-use ratatui::{style::Stylize, text::Line, widgets::{Paragraph, Wrap}};
+use ratatui::{style::Stylize, text::{Line, Text}, widgets::{Paragraph, Wrap}};
 
 #[derive(Debug, Clone, Default)]
 pub enum Desc {
@@ -21,25 +21,31 @@ pub enum Desc {
 	Warning(String),
 	Error(String),
 }
+impl Desc {
+	pub fn as_str(&self) -> &str {
+		match self {
+			Desc::None => "",
+			Desc::Info(s) | Desc::Warning(s) | Desc::Error(s) => s.as_str(),
+		}
+	}
+}
 
 #[derive(Debug, Clone, Default)]
-pub struct Logger {
-	lns: Vec<Desc>,
+pub struct Logger<'a> {
+	text: Text<'a>,
 }
-impl Logger {
+impl Logger<'_> {
 	pub fn log(&mut self, desc: Desc) {
-		self.lns.push(desc);
+		let line = match desc {
+			Desc::None => Line::default(),
+			Desc::Info(s) => Line::from(s).green(),
+			Desc::Warning(s) => Line::from(s).yellow(),
+			Desc::Error(s) => Line::from(s).red(),
+		};
+		self.text.push_line(line);
 	}
 	pub fn widget(&'_ self) -> Paragraph<'_> {
-		let text = self.lns.iter().filter_map(|desc| {
-			match desc {
-				Desc::None => None,
-				Desc::Info(s) => Some(Line::from(s.as_str()).green()),
-				Desc::Warning(s) => Some(Line::from(s.as_str()).yellow()),
-				Desc::Error(s) => Some(Line::from(s.as_str()).red()),
-			}
-		}).collect::<Vec<Line>>();
-		Paragraph::new(text).wrap(Wrap { trim: false })
+		Paragraph::new(self.text.clone()).wrap(Wrap { trim: false })
 	}
 	/*
 	pub fn height(&self, width: u16) -> u16 {

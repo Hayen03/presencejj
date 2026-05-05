@@ -250,6 +250,31 @@ impl Default for AppState {
 		}
 	}
 }
+impl AppState {
+	pub fn get_out_dir(&self, title: &str) -> Option<PathBuf> {
+        let mut old_dir = self.old_out_dir.write().unwrap();
+        let new_dir = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_path())
+            .pick_folder();
+        new_dir.as_ref()?;
+        let new_dir = new_dir.unwrap();
+        let path = new_dir.to_str().unwrap().to_string();
+        let dir = new_dir.parent().map(|p| p.to_str().unwrap().to_string()).unwrap_or("/".into()).into();
+        //println!("{}", dir);
+        *old_dir = dir;
+        Some(path.into())
+    }
+    pub fn get_out_xlsx(&self, title: &str) -> Option<PathBuf> {
+        let old_dir = self.old_out_dir.read().unwrap();
+        let file = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_path())
+            .add_filter("xlsx", &["xlsx"])
+            .pick_file();
+        file
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct Poll<'a> {

@@ -118,7 +118,7 @@
 #let fiche_med(doc, 
 	enfant: new_enfant(),
 ) = [
-
+	#set text(font: "Montserrat")
 	#show heading.where(depth: 1): set text(size: 28pt)
 	#show heading.where(depth: 2): set text(size: 18pt)
 	#show heading.where(depth: 3): set text(size: 14pt)
@@ -239,6 +239,7 @@
 }
 #let presence_anim(doc, groupe: new_groupe(), participants: ()) = [
 	#set page(paper: "us-letter", flipped: true, margin: 1cm)
+	#set text(font: "Montserrat")
 
 	#show heading.where(depth: 1): set text(size: 24pt)
 	#show heading.where(depth: 2): set text(size: 18pt)
@@ -320,6 +321,7 @@
 	participants: (),
 ) = [
 		#set page(paper: "us-letter", flipped: true, margin: 1cm)
+		#set text(font: "Montserrat")
 
 	#show heading.where(depth: 1): set text(size: 24pt)
 	#show heading.where(depth: 2): set text(size: 18pt)

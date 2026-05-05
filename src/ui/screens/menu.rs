@@ -93,8 +93,7 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 			KeyCode::Esc => Ok(UpdateAction::Quit.one()),
 			KeyCode::Enter => {
 				if let Some(item) = self.get_selected() {
-					let result = (item.action)(state)?;
-					Ok(result)
+					(item.action)(state)
 				} else {
 					Ok(UpdateAction::Continue.one())
 				}

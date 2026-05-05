@@ -95,5 +95,5 @@ pub fn charger_de_prog(state: Arc<AppState>) -> crate::ui::actions::ActionResult
 		return Ok(UpdateAction::Push(Box::new(screen) as Box<dyn crate::ui::Screen>).one());
 	}
 
-	Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::Runtime { src: Box::new(String::from("Aucun fichier sélectionné")) }) as Box<dyn std::error::Error>).one())
+	Ok(crate::ui::UpdateAction::ErrorPopUp(Box::new(UIError::CancelAction { desc: String::from("Aucun fichier sélectionné") } )).one())
 }

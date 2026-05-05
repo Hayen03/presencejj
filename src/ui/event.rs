@@ -70,7 +70,7 @@ impl EventHandler {
 							},
 							cte::Event::Mouse(mouse) => { sender.send(Event::Mouse(mouse)) },
 							cte::Event::Resize(w, h) => { sender.send(Event::Resize(w, h)) },
-							_ => unimplemented!(),
+							_ => continue,
 						}.expect("Failed to send terminal event");
 					}
 					if last_tick.elapsed() >= tick_rate {
