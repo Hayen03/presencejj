@@ -1,10 +1,15 @@
-use std::{cell::Cell, collections::HashMap, sync::{Arc, Condvar, Mutex}, thread::JoinHandle};
+use std::{cell::Cell, collections::HashMap, sync::{Arc, Condvar, Mutex, RwLock}};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, text::{Line, Span, Text}, widgets::WidgetRef};
+use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 use ratatui_textarea::TextArea;
+use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::groupes::{self, Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, UniqueStats, VilleStats, fill_stats, get_unique_stats, print_stats_to_excel}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::Desc}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, UniqueStats, VilleStats, fill_stats, get_unique_stats, print_stats_to_excel}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::Desc}};
 use crossterm::event as cte;
+
+static QUERY_COL_GUTTER: u16 = 1;
+static QUERY_INPUT_WIDTH: u16 = 8;
+static QUERY_DESC_MIN_WIDTH: u16 = 20;
 
 pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let out_file = state.get_out_xlsx("Fichier de sortie");
@@ -17,6 +22,7 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 	let screen = StatsScreen::default();
 	let step = screen.get_step();
 	let signal = screen.get_signal();
+	let input = screen.get_input();
 
 	let thread = std::thread::spawn(move || {
 
@@ -32,7 +38,14 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 			if grps.is_empty() { // skip if empty to avoid the round trip
 				HashMap::new()
 			} else {
-				let new_step = Step::QueryCap { query: Query::new(grps) };
+				let query = Query::new(grps);
+				// update the text area with the first value
+				{
+					let val = query.morph.get(query.order.get(0).expect("Query order is empty")).map(String::as_str).expect("Morph should have an entry for all gids");
+					// todo! find a way to sync that
+					//*input.write().expect("Poisoned Lock") = new_input(val);
+				}
+				let new_step = Step::QueryCap { query };
 				*step.lock().expect("Poisoned Lock") = new_step;
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
@@ -123,27 +136,33 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 }
 
 #[derive(Debug, Default)]
-struct Query<'a, T> {
+struct Query<T> {
 	data: HashMap<GroupeID, T>,
 	descs: HashMap<GroupeID, Arc<str>>,
-	morph: HashMap<GroupeID, TextArea<'a>>,
+	morph: HashMap<GroupeID, String>,
 	order: Vec<GroupeID>,
 	at: usize,
 	completed: bool,
+	scroll: Cell<usize>,
 }
-impl<'a, T> Query<'a, T> where T: Default + ToString {
+impl<'a, T> Query<T> where T: Default + ToString {
 	fn new(mut groupes: Vec<&Groupe>) -> Self {
 		groupes.sort_by_key(|a| a.desc());
 		let data: HashMap<GroupeID, T> = groupes.iter().map(|g| (g.id, T::default())).collect();
 		let descs = groupes.iter().map(|g| (g.id, g.desc().into())).collect();
 		let morph = data.iter().map(|p| {
-			let mut text_area = TextArea::default();
-			text_area.set_yank_text(p.1.to_string());
-			text_area.paste();
-			(*p.0, text_area)
+			(*p.0, p.1.to_string())
 		}).collect();
 		let order = groupes.iter().map(|g| g.id).collect();
-		Self { data, descs, morph, order, at: 0, completed: false }
+		Self { 
+			data, 
+			descs, 
+			morph, 
+			order, 
+			at: 0, 
+			completed: false, 
+			scroll: Cell::new(0),
+		}
 	}
 }
 
@@ -153,15 +172,15 @@ enum Step<'a> {
 	Start,
 	Work,
 	QueryCap{
-		query: Query<'a, usize>,
+		query: Query<usize>,
 	},
 	//QueryDoAnnulation(Option<bool>),
 	QueryAnnulation {
-		query: Query<'a, usize>,
+		query: Query<usize>,
 	},
 	//QueryDoAttente(Option<bool>),
 	QueryAttente {
-		query: Query<'a, usize>,
+		query: Query<usize>,
 	},
 	Print,
 	Done {
@@ -196,6 +215,7 @@ struct StatsResult {
 #[derive(Debug, Default)]
 struct StatsScreen<'a> {
 	thread: Option<std::thread::JoinHandle<Result<StatsResult, UIError>>>,
+	input: Arc<RwLock<TextArea<'static>>>,
 	step: Arc<Mutex<Step<'a>>>,
 	signal: Arc<Condvar>,
 }
@@ -210,21 +230,57 @@ impl<'a> StatsScreen<'a> {
 	fn get_signal(&self) -> Arc<Condvar> {
 		self.signal.clone()
 	}
+	fn get_input(&self) -> Arc<RwLock<TextArea<'static>>> {
+		self.input.clone()
+	}
 }
 impl<'a> WidgetRef for StatsScreen<'a> {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+		Clear.render(area, buf);
+		let block = Block::bordered()
+			.border_set(border::THICK)
+			.bg(Color::Black)
+			.border_style(Style::new().white());
 		match &*self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
-				show_query("Entrez les Capacités Manquantes", query, area, buf);
+				show_query(" Entrez les Capacités Manquantes ", query, self.input.clone(), block, area, buf);
 			},
 			Step::QueryAnnulation { query } => {
-				show_query("Entrez les Nombres d'Annulation", query, area, buf);
+				show_query(" Entrez les Nombres d'Annulation ", query, self.input.clone(), block, area, buf);
 			},
 			Step::QueryAttente { query } => {
-				show_query("Entrez les Nombres de Participants en Attente", query, area, buf);
+				show_query(" Entrez les Nombres de Participants en Attente ", query, self.input.clone(), block, area, buf);
 			},
-			Step::Done { text, scroll, current_max_scroll, .. } => {},
-			_ => {},
+			Step::Done { text, scroll, current_max_scroll, .. } => {
+				let block = block
+					.title_top(Line::from(" Statistiques ").white().bold().centered())
+					.title_bottom(Line::from(vec![
+						" Appuyez sur ".gray(),
+						"Esc".light_blue().bold(),
+						" ou ".gray(),
+						"Enter".light_blue().bold(),
+						" pour fermer ".gray(),
+					]).centered());
+				let inner = block.inner(area);
+				block.render(area, buf);
+				let p = Paragraph::new(text.clone()).wrap(Wrap { trim: false });
+				let h = p.line_count(inner.width);
+				let max_scroll = h.saturating_sub(inner.height as usize);
+				current_max_scroll.set(Some(max_scroll));
+				p.scroll((*scroll.min(&max_scroll) as u16, 0)).render(inner, buf);
+			},
+			_ => {
+				// show loading screen
+				let block = block
+					.title_top(Line::from(" Statistiques ").centered().white())
+					.title_bottom(Line::from(vec![
+						" Appuyez sur ".gray(),
+						"Esc".light_blue().bold(),
+						" pour annuler ".gray(),
+					]).centered());
+				let loading = Text::from("Génération des statistiques en cours...").yellow();
+				Paragraph::new(loading).block(block).wrap(Wrap { trim: false }).render(area, buf);
+			},
 		}
 	}
 }
@@ -232,13 +288,35 @@ impl<'a> Screen for StatsScreen<'a> {
 	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
 		match &mut *self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
-				handle_query(query, self.signal.clone(), event)
+				// update the current morph with the input
+				let current_gid = query.order.get(query.at);
+				if let Some(current_gid) = current_gid {
+					let line = self.input.read().expect("Poisoned Lock").lines().first().cloned();
+					if let Some(line) = line {
+						query.morph.insert(*current_gid, line);
+					}
+				}
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
 			},
 			Step::QueryAnnulation { query } => {
-				handle_query(query, self.signal.clone(), event)
+				let current_gid = query.order.get(query.at);
+				if let Some(current_gid) = current_gid {
+					let line = self.input.read().expect("Poisoned Lock").lines().first().cloned();
+					if let Some(line) = line {
+						query.morph.insert(*current_gid, line);
+					}
+				}
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
 			},
 			Step::QueryAttente { query } => {
-				handle_query(query, self.signal.clone(), event)
+				let current_gid = query.order.get(query.at);
+				if let Some(current_gid) = current_gid {
+					let line = self.input.read().expect("Poisoned Lock").lines().first().cloned();
+					if let Some(line) = line {
+						query.morph.insert(*current_gid, line);
+					}
+				}
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
 			},
 			Step::Done { result, scroll, current_max_scroll, .. } => {
 				match event {
@@ -303,14 +381,15 @@ impl<'a> Screen for StatsScreen<'a> {
 	}
 }
 
-fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, event: crate::ui::event::Event) -> Result<super::UpdateActions, UIError> {
+fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut TextArea, event: crate::ui::event::Event) -> Result<super::UpdateActions, UIError> {
 	match event {
 		crate::ui::event::Event::Key(key) => {
 			match key.code {
 				cte::KeyCode::Enter => {
 					// step 1: verify all inputs are valid
-					for (gid, text_area) in &query.morph {
-						let ln = text_area.lines().first().map(String::as_str).unwrap_or("0");
+					for (gid, ln) in &query.morph {
+						let ln = ln.trim();
+						let ln = if ln.is_empty() {"0"} else {ln};
 						if let Ok(n) = ln.parse::<usize>() {
 							query.data.insert(*gid, n);
 						} else {
@@ -324,26 +403,29 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, event: crate::ui
 					Ok(UpdateAction::Continue.one())
 				},
 				cte::KeyCode::Esc => {
-					// mark the query as completed without updating the data
+					// mark the query as completed without updating the data (in fact, reset it in case enter was pressed before)
+					for (gid, val) in &mut query.data {
+						*val = 0;
+					}
 					query.completed = true;
 					// notify
 					signal.notify_all();
 					Ok(UpdateAction::Continue.one())
 				},
 				cte::KeyCode::Up => {
-					query.at = query.at.saturating_sub(1).min(query.order.len());
+					let new_pos = query.at.saturating_sub(1);
+					move_cursor(query, new_pos, input);
 					Ok(UpdateAction::Continue.one())
 				},
 				cte::KeyCode::Down => {
-					query.at = query.at.saturating_add(1).min(query.order.len());
+					let new_pos = query.at.saturating_add(1);
+					move_cursor(query, new_pos, input);
 					Ok(UpdateAction::Continue.one())
 				},
-				e => {
+				_e => {
 					// pass the event to the current text area
 					let current_gid = query.order.get(query.at).expect("Query order is empty") ;
-					if let Some(text_area) = query.morph.get_mut(current_gid) {
-						text_area.input(key);
-					}
+					input.input(key);
 					Ok(UpdateAction::Continue.one())
 				},
 			}
@@ -354,7 +436,162 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, event: crate::ui
 	}
 }
 
-fn show_query(title: &str, query: &Query<usize>, area: Rect, buf: &mut Buffer) {}
+fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, block: Block, area: Rect, buf: &mut Buffer) {
+	let block = block
+		.title_top(Line::from(title).white().bold().centered())
+		.title_bottom(Line::from(vec![
+			" Appuyez sur ".gray(),
+			"Esc".light_blue().bold(),
+			" pour annuler ou ".gray(),
+			"Enter".light_blue().bold(),
+			" pour valider ".gray(),
+		]).centered());
+	let inner = block.inner(area);
+	block.render(area, buf);
+
+	// get scroll value
+	let current_scroll = query.scroll.get();
+	let current_scroll_end = current_scroll.saturating_add(inner.height as usize).min(query.order.len());
+	// clamp/move the view window to fit the cursor if needed
+	let scroll = {
+		if query.at < current_scroll {
+			query.at
+		} else if query.at >= current_scroll_end {
+			query.at.saturating_sub(inner.height as usize - 1)
+		} else {
+			current_scroll
+		}
+	};
+	let scroll_end = scroll.saturating_add(inner.height as usize).min(query.order.len());
+	let view = &query.order[scroll..scroll_end];
+
+	let desc_width = inner.width.saturating_sub(QUERY_INPUT_WIDTH).saturating_sub(QUERY_COL_GUTTER);
+	if desc_width < QUERY_DESC_MIN_WIDTH {
+		// special rendering: show only the desc, but when the cursor is on the line show the input instead
+		for (i, gid) in view.iter().enumerate() {
+			let real_i = scroll + i;
+			let desc_area = Rect {
+				x: inner.x,
+				y: inner.y + i as u16,
+				width: inner.width,
+				height: 1,
+			};
+			let mini_desc_area = Rect {
+				x: inner.x,
+				y: inner.y + i as u16,
+				width: desc_width,
+				height: 1,
+			};
+			let input_area = Rect {
+				x: inner.x + desc_width + QUERY_COL_GUTTER,
+				y: inner.y + i as u16,
+				width: QUERY_INPUT_WIDTH,
+				height: 1,
+			};
+			let desc = query.descs.get(gid).map(Arc::as_ref).unwrap_or("???");
+			if real_i == query.at {
+				let par = Paragraph::new(desc);
+				let par = if par.line_width() > mini_desc_area.width as usize - 3 {
+					let s = desc.grapheme_indices(true).skip(mini_desc_area.width as usize - 3).next();
+					if let Some((idx, _)) = s {
+						Paragraph::new(format!("{}...", &desc[..idx]))
+					} else { par }
+				} else { par };
+				par.gray().on_black().render(mini_desc_area, buf);
+				// render the input on top of the desc
+				let mut input = input.write().expect("Poisoned Lock");
+				let style = if input.lines().first().map(|s| {
+					let trimed = s.trim();
+					trimed.is_empty() || trimed.parse::<usize>().is_ok()
+				}).unwrap_or(false) {
+					Style::new().green().on_gray()
+				} else {
+					Style::new().red().on_gray()
+				};
+				input.set_style(style);
+				input.render(input_area, buf);
+			} else {
+				let par = Paragraph::new(desc);
+				let par = if par.line_width() > desc_area.width as usize - 3 {
+					let s = desc.grapheme_indices(true).skip(desc_area.width as usize - 3).next();
+					if let Some((idx, _)) = s {
+						Paragraph::new(format!("{}...", &desc[..idx]))
+					} else { par }
+				} else { par };
+				par.gray().on_black().render(desc_area, buf);
+			}
+		}
+	} else {
+		// normal rendering: show the desc on the left and the input on the right
+		for (i, gid) in view.iter().enumerate() {
+			let real_i = scroll + i;
+			let desc_area = Rect {
+				x: inner.x,
+				y: inner.y + i as u16,
+				width: desc_width,
+				height: 1,
+			};
+			let input_area = Rect {
+				x: desc_area.x + desc_area.width + QUERY_COL_GUTTER,
+				y: desc_area.y,
+				width: QUERY_INPUT_WIDTH,
+				height: 1,
+			};
+			let desc = query.descs.get(gid).map(Arc::as_ref).unwrap_or("???");
+			let par = Paragraph::new(desc);
+			let par = if par.line_width() > desc_area.width as usize - 3 {
+				let s = desc.grapheme_indices(true).skip(desc_area.width as usize - 3).next();
+				if let Some((idx, _)) = s {
+					Paragraph::new(format!("{}...", &desc[..idx]))
+				} else { par }
+			} else { par };
+			if real_i == query.at {
+				par.white().on_gray().render(desc_area, buf);
+				let mut input = input.write().expect("Poisoned Lock");
+				let style = if input.lines().first().map(|s| {
+					let trimed = s.trim();
+					trimed.is_empty() || trimed.parse::<usize>().is_ok()
+				}).unwrap_or(false) {
+					Style::new().green().on_gray()
+				} else {
+					Style::new().red().on_gray()
+				};
+				input.set_style(style);
+				input.render(input_area, buf);
+			} else { // normal line
+				par.gray().on_black().render(desc_area, buf);
+				let val = query.morph.get(gid).map(String::as_str).expect("Group should exists").gray().on_black().into_right_aligned_line();
+				Paragraph::new(val).render(input_area, buf);
+			}
+		}
+	}
+}
+
+fn move_cursor(query: &mut Query<usize>, new_pos: usize, input: &mut TextArea) {
+	if query.order.is_empty() {
+		return;
+	}
+	let new_pos = new_pos.min(query.order.len()-1);
+	if query.at != new_pos {
+		let gid = query.order.get(query.at).expect("Query order is empty");
+		// put the current input into the morph map
+		let line = input.lines().first().map(|s| s.trim().into()).unwrap_or_default();
+		query.morph.insert(*gid, line);
+		// move the cursor
+		query.at = new_pos;
+		// update the input with the new morph
+		let gid = query.order.get(query.at).expect("Query order is empty");
+		let line = query.morph.get(gid).expect("Morph should have an entry for all gids").clone();
+		*input = new_input(&line);
+	}
+}
+
+fn new_input<'a>(starting_text: &str) -> TextArea<'a> {
+	let mut input = TextArea::new(vec![starting_text.into()]);
+	input.set_style(Style::new().white().on_gray());
+	input.move_cursor(ratatui_textarea::CursorMove::End);
+	input
+}
 
 fn make_text<'a>(result: &StatsResult) -> Text<'a> {
 	let mut text = Text::default();
@@ -362,6 +599,13 @@ fn make_text<'a>(result: &StatsResult) -> Text<'a> {
 	mk_unique_stats(&mut text, &result.ustats);
 	text.push_line(Line::default());
 	mk_stats(&mut text, &result.stats);
+
+	text.push_line(Line::default());
+	if result.status {
+		text.push_line(Line::from("Le fichier a été enregistré!").green());
+	} else {
+		text.push_line(Line::from("Le fichier n'a pu être enregistré...").red());
+	}
 
 	text
 }
