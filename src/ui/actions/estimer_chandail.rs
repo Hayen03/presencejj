@@ -1,10 +1,28 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}, thread::JoinHandle};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::{Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
+use lazy_static::lazy_static;
+use ratatui::{buffer::Buffer, layout::Rect, style::{Style, Stylize, Color}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 
 use crossterm::event as cte;
 
 use crate::{data::Taille, stats::{calcul_chandail, calcul_chandail_complex}, ui::{AppState, PollLine, Screen, UIError, UpdateAction, actions::UpdateActions, screens::{Menu, MenuItem}}};
+
+lazy_static!{
+	pub static ref CHANDAIL_SCREEN_TITLE: Line<'static> = Line::from(" Estimation de nombre de chandails ").white().bold().centered();
+	pub static ref CHANDAIL_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Esc".light_blue(),
+		" pour annuler, ou sur ".gray(),
+		"Entrée".light_blue(),
+		" pour continuer ".gray(),
+	]).centered();
+	pub static ref CHANDAIL_SCREEN_BLOCK: Block<'static> = Block::bordered()
+		.title_top(CHANDAIL_SCREEN_TITLE.clone())
+		.border_set(border::THICK)
+		.border_style(Style::new().white())
+		.bg(Color::Black)
+		.title_bottom(CHANDAIL_SCREEN_INSTRUCTIONS.clone());
+}
 
 pub fn estimer_chandail(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let menu_size = {
@@ -111,12 +129,7 @@ impl ChandailScreen {
 }
 impl WidgetRef for ChandailScreen {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
-		let block = Block::bordered()
-			.title_top(Line::from(" Estimation de nombre de chandails ").white().centered())
-			.border_set(border::THICK)
-			.border_style(Style::new().white())
-			.bg(ratatui::style::Color::Black)
-			.title_bottom(Line::from(vec![" Appuyez sur ".gray(), "Esc".light_blue(), " pour annuler, ou sur ".gray(), "Entrée".light_blue(), " pour continuer ".gray()]).centered());
+		let block = CHANDAIL_SCREEN_BLOCK.clone();
 		let inner = block.inner(area);
 		Clear.render(area, buf);
 		block.render(area, buf);

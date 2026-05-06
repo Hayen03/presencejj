@@ -1,12 +1,27 @@
+use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 // use unicode_width::UnicodeWidthStr;
 
-use crate::ui::{Screen, ScreenSize};
+use crate::ui::{Screen, ScreenSize, line_width};
 
+lazy_static!{
+	pub static ref INFO_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Entrée".light_blue().bold(),
+		" pour continuer. ".gray(),
+	]).centered();
+	pub static ref INFO_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&INFO_SCREEN_INSTRUCTIONS) as u16).saturating_add(2);
+	pub static ref INFO_SCREEN_BLOCK: Block<'static> = Block::bordered()
+		.title_bottom(INFO_SCREEN_INSTRUCTIONS.clone())
+		.border_set(border::THICK)
+		.border_style(Style::new().yellow())
+		.bg(Color::Black);
+}
 
 #[derive(Debug)]
 pub struct InfoScreen<'a> {
-	title: String,
+	title: Line<'a>,
+	title_width: u16,
 	text: Text<'a>,
 	scroll: u16,
 	size: (ScreenSize, ScreenSize),
@@ -14,8 +29,10 @@ pub struct InfoScreen<'a> {
 }
 impl<'a> InfoScreen<'a> {
 	pub fn new(title: String, text: Text<'a>) -> Self {
-		let prefered_width = text.lines.iter().map(|line| line.spans.iter().map(|span| span.width()).sum()).max().unwrap_or(0) as u16 + 2;
-		InfoScreen { title, text, scroll: 0, size: (ScreenSize::Fill, ScreenSize::Fill), prefered_width }
+		let title = Line::from(format!(" {} ", title)).centered().yellow();
+		let title_width = (line_width(&title) as u16).saturating_add(2);
+		let prefered_width = (text.lines.iter().map(|line| line_width(line)).max().unwrap_or(0) as u16).saturating_add(2);
+		InfoScreen { title, text, scroll: 0, size: (ScreenSize::Fill, ScreenSize::Fill), prefered_width, title_width }
 	}
 	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
 		self.size = (width, height);
@@ -24,44 +41,22 @@ impl<'a> InfoScreen<'a> {
 }
 impl<'a> WidgetRef for InfoScreen<'a> {
 	fn render_ref(&self, rect: Rect, buf: &mut Buffer) {
-		let title = Line::from(format!(" {} ", self.title)).centered().yellow();
-		let title_width: u16 = (title.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
-		let instruction = Line::from(" Appuyez sur Entrée pour continuer. ").centered().gray();
-		let instruction_width: u16 = (instruction.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
-		let title_width = title_width.max(instruction_width);
-
-		let max_width = match self.size.0 {
-			ScreenSize::Fill => rect.width,
-			ScreenSize::Length(l) => l,
-			ScreenSize::Ratio(r) => (rect.width as f32 * r).floor() as u16,
-			ScreenSize::Fit {min, max} => { (self.prefered_width.saturating_add(2)).max(title_width).clamp(min, max) },
-		}.min(rect.width);
+		let max_width = self.size.0.resolve(rect.width, (self.prefered_width.saturating_add(2)).max(self.title_width));
 		let tmp_area = rect.centered(ratatui::layout::Constraint::Max(max_width), ratatui::layout::Constraint::Length(rect.height));
 
-		let block = Block::bordered()
-			.title_top(title)
-			.title_bottom(instruction)
-			.border_set(border::THICK)
-			.border_style(Style::new().yellow())
-			.bg(Color::Black);
+		let block = INFO_SCREEN_BLOCK.clone().title_top(self.title.clone());
 		let tmp_inner = block.inner(tmp_area);
 
 		let paragraph = Paragraph::new(self.text.clone())
 			.wrap(Wrap { trim: false });
 		let h = paragraph.line_count(tmp_inner.width);
 
-		let max_height = match self.size.1 {
-			ScreenSize::Fill => rect.height,
-			ScreenSize::Length(l) => l,
-			ScreenSize::Ratio(r) => (rect.height as f32 * r).floor() as u16,
-			ScreenSize::Fit {min, max} => {
-				if h > u16::MAX as usize {
-					u16::MAX
-				} else {
-					(h as u16).saturating_add(2).clamp(min, max)
-				}
-			},
-		}.min(rect.height);
+		let prefered_height = if h > u16::MAX as usize {
+			u16::MAX
+		} else {
+			(h as u16).saturating_add(2)
+		};
+		let max_height = self.size.1.resolve(rect.height, prefered_height);
 		let area = rect.centered(ratatui::layout::Constraint::Max(max_width), ratatui::layout::Constraint::Max(max_height));
 		let inner = block.inner(area);
 		Clear.render(area, buf);

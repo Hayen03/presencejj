@@ -1,5 +1,6 @@
 use std::{cell::Cell, collections::HashMap, sync::{Arc, Condvar, Mutex, RwLock}};
 
+use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{HorizontalAlignment, Rect}, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 use ratatui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation;
@@ -10,6 +11,26 @@ use crossterm::event as cte;
 static QUERY_COL_GUTTER: u16 = 1;
 static QUERY_INPUT_WIDTH: u16 = 8;
 static QUERY_DESC_MIN_WIDTH: u16 = 20;
+
+lazy_static!{
+	pub static ref STATS_SCREEN_DEFAULT_TITLE: Line<'static> = Line::from(" Statistiques ").white().bold().centered();
+	pub static ref STATS_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Esc".light_blue().bold(),
+		" ou ".gray(),
+		"Enter".light_blue().bold(),
+		" pour fermer ".gray(),
+	]).centered();
+	pub static ref STATS_WORK_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Génération des statistiques en cours... Appuyez sur ".gray(),
+		"Esc".light_blue().bold(),
+		" pour annuler ".gray(),
+	]).centered();
+	pub static ref STATS_SCREEN_BLOCK: Block<'static> = Block::bordered()
+		.border_set(border::THICK)
+		.border_style(Style::new().white())
+		.bg(Color::Black);
+}
 
 pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 	let out_file = state.get_out_xlsx("Fichier de sortie");
@@ -309,10 +330,7 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 		self.sync_query_first_input();
 
 		Clear.render(area, buf);
-		let block = Block::bordered()
-			.border_set(border::THICK)
-			.bg(Color::Black)
-			.border_style(Style::new().white());
+		let block = STATS_SCREEN_BLOCK.clone();
 		match &*self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
 				show_query(" Entrez les Capacités Manquantes ", query, &self.input, block, area, buf);
@@ -325,14 +343,8 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 			},
 			Step::Done { text, scroll, current_max_scroll, .. } => {
 				let block = block
-					.title_top(Line::from(" Statistiques ").white().bold().centered())
-					.title_bottom(Line::from(vec![
-						" Appuyez sur ".gray(),
-						"Esc".light_blue().bold(),
-						" ou ".gray(),
-						"Enter".light_blue().bold(),
-						" pour fermer ".gray(),
-					]).centered());
+					.title_top(STATS_SCREEN_DEFAULT_TITLE.clone())
+					.title_bottom(STATS_SCREEN_INSTRUCTIONS.clone());
 				let inner = block.inner(area);
 				block.render(area, buf);
 				let p = Paragraph::new(text.clone()).wrap(Wrap { trim: false });
@@ -343,13 +355,9 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 			},
 			_ => {
 				// show loading screen
-				let block = block
-					.title_top(Line::from(" Statistiques ").centered().white())
-					.title_bottom(Line::from(vec![
-						" Appuyez sur ".gray(),
-						"Esc".light_blue().bold(),
-						" pour annuler ".gray(),
-					]).centered());
+				let block = STATS_SCREEN_BLOCK.clone()
+					.title_top(STATS_SCREEN_DEFAULT_TITLE.clone())
+					.title_bottom(STATS_WORK_INSTRUCTIONS.clone());
 				let loading = Line::from(vec![
 					"Génération des statistiques en cours... ".yellow(),
 					format!("Progess: {}/?", *self.progress_hook.lock().expect("Poisoned Lock")).light_blue(),
@@ -624,6 +632,10 @@ fn show_query(title: &str, query: &Query<usize>, input: &RwLock<TextArea>, block
 				} else { par }
 			} else { par };
 			if real_i == query.at {
+				let desc_area = Rect {
+					width: desc_area.width + QUERY_COL_GUTTER,
+					..desc_area
+				}; // to color the gutter as well
 				par.white().on_gray().render(desc_area, buf);
 				let mut input = input.write().expect("Poisoned Lock");
 				let style = if input.lines().first().map(|s| {

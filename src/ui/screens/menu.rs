@@ -19,6 +19,8 @@ impl<Ids> Debug for MenuItem<Ids> where Ids: ToString + Debug {
 	}
 }
 
+// TODO refactor this to be prettier
+
 pub struct Menu<'a, Ids> where Ids: ToString + Debug {
 	items: Box<[MenuItem<Ids>]>,
 	selected: usize,
@@ -146,22 +148,8 @@ impl<'a, Ids> Screen for Menu<'a, Ids> where Ids: ToString + Debug {
 	}
 	fn render_focus(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer, focus: bool) {
 		let area = {
-			let width = match self.size.0 {
-				ScreenSize::Fill => area.width,
-				ScreenSize::Length(l) => l,
-				ScreenSize::Ratio(r) => (area.width as f32 * r).floor() as u16,
-				ScreenSize::Fit {min, max} => {
-					(self.fit_width + 4).max(self.title_width + 4).clamp(min, max)
-				},
-			};
-			let height = match self.size.1 {
-				ScreenSize::Fill => area.height,
-				ScreenSize::Length(l) => l,
-				ScreenSize::Ratio(r) => (area.height as f32 * r).floor() as u16,
-				ScreenSize::Fit {min, max} => {
-					(self.widget.len() as u16 + 2).clamp(min, max)
-				},
-			};
+			let width = self.size.0.resolve(area.width, self.fit_width.max(self.title_width).saturating_add(4));
+			let height = self.size.1.resolve(area.height, (self.widget.len() as u16).saturating_add(2));
 			area.centered(ratatui::layout::Constraint::Max(width), ratatui::layout::Constraint::Max(height))
 		};
 		let mut state = ratatui::widgets::ListState::default().with_selected(Some(self.selected));

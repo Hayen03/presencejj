@@ -1,6 +1,7 @@
 use std::{any::Any, collections::VecDeque, fmt::Debug, path::PathBuf, sync::{Arc, RwLock, mpsc::RecvError}};
 
-use ratatui::text::Text;
+use ratatui::text::{Line, Text};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
 
@@ -9,6 +10,13 @@ pub mod tui;
 pub mod event;
 pub mod actions;
 pub mod screens;
+
+pub fn line_width(line: &Line) -> usize {
+	line.spans.iter().map(|span| span.width()).sum()
+}
+pub fn str_width(s: &str) -> usize {
+	s.graphemes(true).count()
+}
 
 #[derive(Debug)]
 pub enum TextInputError {
@@ -147,6 +155,16 @@ pub enum ScreenSize {
 	Length(u16),
 	Fit{ min: u16, max: u16 },
 	Ratio(f32),
+}
+impl ScreenSize {
+	pub fn resolve(&self, available: u16, prefered: u16) -> u16 {
+		match self {
+			ScreenSize::Fill => available,
+			ScreenSize::Length(l) => *l,
+			ScreenSize::Fit { min, max } => prefered.clamp(*min, *max),
+			ScreenSize::Ratio(r) => (available as f32 * r).floor() as u16,
+		}.min(available)
+	}
 }
 
 #[allow(dead_code)]

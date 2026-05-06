@@ -1,8 +1,24 @@
 use std::{cell::Cell, sync::{Arc, Mutex}};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::border, text::Line, widgets::{Block, Borders, Clear, Gauge, Widget, WidgetRef}};
+use lazy_static::lazy_static;
+use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Borders, Clear, Gauge, Widget, WidgetRef}};
 
 use crate::ui::{Screen, UIError, screens::{Logger, ScrollMode}};
+
+lazy_static!{
+	pub static ref PROGRESS_LOG_FINISHED_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Terminé ! Appuyez sur ".gray(),
+		"Entrée".light_blue().bold(),
+		" pour continuer ".gray(),
+	]).centered();
+	pub static ref PROGRESS_LOG_SCREEN_BLOCK: Block<'static> = Block::bordered()
+		.border_set(border::THICK)
+		.border_style(Style::new().white())
+		.bg(Color::Black);
+	pub static ref PROGRESS_BLOCK: Block<'static> = Block::bordered()
+		.border_set(border::PLAIN)
+		.borders(Borders::LEFT | Borders::RIGHT);
+}
 
 #[derive(Debug)]
 pub struct ProgressLogScreen<'a> {
@@ -10,13 +26,14 @@ pub struct ProgressLogScreen<'a> {
 	logger: Arc<Mutex<Logger<'a>>>,
 	target: u32,
 	progress: Arc<Mutex<u32>>,
-	title: String,
+	title: Line<'a>,
 	thread_handle: Option<std::thread::JoinHandle<Result<(), UIError>>>,
 	cancel_hook: Arc<Mutex<bool>>, // to cancel the thread early
 	max_scroll: Cell<usize>,
 }
 impl<'a> ProgressLogScreen<'a> {
 	pub fn new(title: String, target: u32) -> Self {
+		let title = Line::from(format!(" {} ", title)).white().bold().centered();
 		Self {
 			scroll_mode: Cell::new(ScrollMode::Auto),
 			logger: Arc::new(Mutex::new(Logger::default())),
@@ -59,15 +76,17 @@ impl WidgetRef for ProgressLogScreen<'_> {
 		Clear.render(area, buf);
 
 		let instructions = if self.is_done() {
-			Line::from(" Terminé ! Appuyez sur Entrée pour continuer ").green()
+			PROGRESS_LOG_FINISHED_INSTRUCTIONS.clone()
 		} else {
-			Line::from(format!(" Chargement en cours... {:.2}% Appuyez sur Esc pour Annuler ", self.ratio() * 100.0)).gray()
+			Line::from(vec![
+				format!(" Chargement en cours... {:.2}% Appuyez sur ", self.ratio() * 100.0).gray(),
+				"Esc".light_blue().bold(),
+				" pour Annuler ".gray(),
+			]).centered()
 		};
-		let block = Block::bordered()
-			.title_top(Line::from(format!(" {} ", self.title)).white().centered())
-			.title_bottom(instructions.centered())
-			.border_set(border::THICK)
-			.bg(Color::Black);
+		let block = PROGRESS_LOG_SCREEN_BLOCK.clone()
+			.title_top(self.title.clone())
+			.title_bottom(instructions.centered());
 		let inner = block.inner(area);
 		block.render(area, buf);
 
@@ -79,9 +98,7 @@ impl WidgetRef for ProgressLogScreen<'_> {
 			height: 1,
 		};
 		let progress_ratio = self.ratio();
-		let progress_block = Block::bordered()
-			.border_set(border::PLAIN)
-			.borders(Borders::LEFT | Borders::RIGHT);
+		let progress_block = PROGRESS_BLOCK.clone();
 		Gauge::default()
 		.ratio(progress_ratio)
 		.label(format!("{}/{}", *self.progress.lock().expect("Poisoned Lock"), self.target))

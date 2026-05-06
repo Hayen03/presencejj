@@ -1,8 +1,26 @@
 use std::sync::Arc;
 
-use ratatui::{style::{Style, Stylize}, text::{Line, Text, ToText}, widgets::{Paragraph, Widget, WidgetRef}};
+use lazy_static::lazy_static;
+use ratatui::{style::{Style, Stylize}, text::{Line, Text, ToText}, widgets::{Block, Paragraph, Widget, WidgetRef}};
 
-use crate::ui::{AppState, Screen, ScreenSize};
+use crate::ui::{AppState, Screen, line_width};
+
+lazy_static!(
+	pub static ref ERROR_SCREEN_TITLE: Line<'static> = Line::from(" Une erreur est survenue! ").centered().red().bold();
+	pub static ref ERROR_SCREEN_TITLE_WIDTH: u16 = (line_width(&ERROR_SCREEN_TITLE) as u16).saturating_add(2);
+	pub static ref ERROR_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Entrée".light_blue().bold(),
+		" pour continuer ".gray(),
+	]).centered();
+	pub static ref ERROR_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&ERROR_SCREEN_INSTRUCTIONS) as u16).saturating_add(2);
+	pub static ref ERROR_SCREEN_BLOCK: Block<'static> = Block::bordered()
+		.title(ERROR_SCREEN_TITLE.clone())
+		.title_bottom(ERROR_SCREEN_INSTRUCTIONS.clone())
+		.border_set(ratatui::symbols::border::THICK)
+		.border_style(Style::new().red())
+		.bg(ratatui::style::Color::Black);
+);
 
 #[derive(Debug)]
 enum ErrorScreenContent<'a> {
@@ -52,48 +70,28 @@ impl<'a> ErrorScreen<'a> {
 }
 impl WidgetRef for ErrorScreen<'_> {
 	fn render_ref(&self, area:ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-		let title = Line::from(" Une erreur est survenue! ").centered().red();
-		let title_width: u16 = (title.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
-		let instruction = Line::from(" Appuyez sur Entrée pour continuer. ").centered().gray();
-		let instruction_width: u16 = (instruction.spans.iter().map(|span| span.width()).sum::<usize>() as u16).saturating_add(2);
-		let title_width = title_width.max(instruction_width);
 
 		// find the dims of the box we want to render the error message in, with some padding
-		let box_width = match crate::ui::Theme::DARK.max_error_box_width {
-			ScreenSize::Fill => area.width,
-			ScreenSize::Length(l) => l,
-			ScreenSize::Ratio(r) => (area.width as f32 * r).floor() as u16,
-			ScreenSize::Fit {min, max} => {
-				self.prefered_width.max(title_width).clamp(min, max)
-			},
-		};
+		let box_width = crate::ui::Theme::DARK.max_error_box_width.resolve(
+			area.width,
+			self.prefered_width.max(*ERROR_SCREEN_TITLE_WIDTH).max(*ERROR_SCREEN_INSTRUCTION_WIDTH),
+		);
 		let tmp_area = area.centered(ratatui::layout::Constraint::Max(box_width), ratatui::layout::Constraint::Length(area.height));
 		//let box_height = crate::ui::Theme::DARK.max_error_box_height.min(area.height);
 		//let box_area = area.centered(ratatui::layout::Constraint::Length(box_width), ratatui::layout::Constraint::Length(box_height));
-		let block = ratatui::widgets::Block::bordered()
-			.title(title)
-			.title_bottom(instruction)
-			.border_set(ratatui::symbols::border::THICK)
-			.border_style(Style::new().red())
-			.bg(ratatui::style::Color::Black);
+		let block = ERROR_SCREEN_BLOCK.clone();
 		let tmp_inner = block.inner(tmp_area);
 
 		let error_text = Paragraph::new(self._message.text())
 			.wrap(ratatui::widgets::Wrap { trim: false });
 
 		let h = error_text.line_count(tmp_inner.width);
-		let box_height = match crate::ui::Theme::DARK.max_error_box_height {
-			ScreenSize::Fill => area.width,
-			ScreenSize::Length(l) => l,
-			ScreenSize::Ratio(r) => (area.width as f32 * r).floor() as u16,
-			ScreenSize::Fit {min, max} => {
-				(if h > u16::MAX as usize {
-					u16::MAX
-				} else {
-					(h as u16).saturating_add(2)
-				}).clamp(min, max)
-			},
+		let prefered_height = if h > u16::MAX as usize {
+			u16::MAX
+		} else {
+			(h as u16).saturating_add(2)
 		};
+		let box_height = crate::ui::Theme::DARK.max_error_box_height.resolve(area.height, prefered_height);
 		let box_area = area.centered(ratatui::layout::Constraint::Max(box_width), ratatui::layout::Constraint::Max(box_height));
 		let inner = block.inner(box_area);
 
