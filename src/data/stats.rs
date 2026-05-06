@@ -1,4 +1,4 @@
-use std::{collections::{BTreeSet, HashMap}, fmt::Display, fs::File, hash::Hash};
+use std::{collections::{BTreeSet, HashMap}, fmt::Display, fs::File, hash::Hash, sync::{Arc, Mutex}};
 
 use lazy_static::lazy_static;
 //use rand::rand_core::le;
@@ -117,55 +117,85 @@ impl Stats {
 		stats
 	}
 }
-pub fn fill_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, membres: &MembreReg, comptes: &CompteReg, do_annulation: &dyn Fn(GroupeID, &str) -> Option<usize>, do_attente: &dyn Fn(GroupeID, &str) -> Option<usize>, get_missing_capacite: &dyn Fn(GroupeID, &str) -> usize) -> (Stats, HashMap<GroupeID, GroupeStats>) {
-	let mut mids: BTreeSet<MembreID> = BTreeSet::new();
-	let mut stats = Stats::default();
-	let mut gstats = HashMap::new();
-	for groupe in groupes {
-		if !groupe.is_null() {
-			let site_stats = stats.sites.entry(groupe.site.clone().unwrap_or_default()).or_default();
-			let age_stats = site_stats.ages.entry(groupe.category.clone().unwrap_or_default()).or_default();
-			let sem_stats = age_stats.semaines.entry(groupe.semaine.clone().unwrap_or_default()).or_default();
-			
-			let group_stats = get_group_stats(groupe, do_annulation, do_attente, get_missing_capacite);
-			gstats.insert(groupe.id, group_stats);
-			sem_stats.capacite += group_stats.capacite;
-			sem_stats.inscriptions += group_stats.inscriptions;
-			sem_stats.annulations += group_stats.annulations;
-			sem_stats.liste_attente += group_stats.liste_attente;
+pub struct FillStats<'a, 'b> {
+	pub groupes: &'b mut dyn Iterator<Item=&'a Groupe>,
+	pub membres: &'a MembreReg,
+	pub comptes: &'a CompteReg,
+	pub do_annulation: &'a dyn Fn(GroupeID, &str) -> Option<usize>,
+	pub do_attente: &'a dyn Fn(GroupeID, &str) -> Option<usize>,
+	pub get_missing_capacite: &'a dyn Fn(GroupeID, &str) -> usize,
+	pub progress: Option<Arc<Mutex<u32>>>,
+	pub cancel: Option<Arc<Mutex<bool>>>,
+}
+impl<'a, 'b> FillStats<'a, 'b> {
+	pub fn fill(self) -> Option<(Stats, HashMap<GroupeID, GroupeStats>)> {
+		// unpack the fields for easier access
+		let FillStats { groupes, membres, comptes, do_annulation, do_attente, get_missing_capacite, progress, cancel } = self;
 
-			let mut partial_mids: BTreeSet<MembreID> = BTreeSet::new();
-			// calcul des villes
-			for mid in &groupe.participants {
-				if let Ok(membre) = membres.get(*mid) {
-					if let Some(cid) = membre.compte {
-						if let Ok(compte) = comptes.get(cid) {
-							if let Some(adr) = compte.adresse.as_ref() {
-								if let Some(code) = adr.code_postal {
-									let ville = Ville::get_from_code_postal(code);
-									match ville {
-										Some(ville) => {
-											if partial_mids.insert(*mid) {
-												let n = site_stats.villes.villes.entry(ville).or_default();
-												*n += 1;
-												site_stats.villes.total += 1;
-											}
-											if mids.insert(*mid) {
-												let n = stats.villes.villes.entry(ville).or_default();
-												*n += 1;
-												stats.villes.total += 1;
-											}
-										},
-										None => {
-											if partial_mids.insert(*mid) {
-												site_stats.villes.autres += 1;
-												site_stats.villes.total += 1;
-											}
-											if mids.insert(*mid) {
-												stats.villes.autres += 1;
-												stats.villes.total += 1;
-											}
-										},
+		let mut mids: BTreeSet<MembreID> = BTreeSet::new();
+		let mut stats = Stats::default();
+		let mut gstats = HashMap::new();
+		for groupe in groupes {
+			// early check for cancel
+			if let Some(cancel_hook) = cancel.as_ref() {
+				if *cancel_hook.lock().expect("Poisoned Lock") {
+					return None;
+				}
+			}
+			if !groupe.is_null() {
+				let site_stats = stats.sites.entry(groupe.site.clone().unwrap_or_default()).or_default();
+				let age_stats = site_stats.ages.entry(groupe.category.clone().unwrap_or_default()).or_default();
+				let sem_stats = age_stats.semaines.entry(groupe.semaine.clone().unwrap_or_default()).or_default();
+				
+				let group_stats = get_group_stats(groupe, do_annulation, do_attente, get_missing_capacite);
+				gstats.insert(groupe.id, group_stats);
+				sem_stats.capacite += group_stats.capacite;
+				sem_stats.inscriptions += group_stats.inscriptions;
+				sem_stats.annulations += group_stats.annulations;
+				sem_stats.liste_attente += group_stats.liste_attente;
+
+				let mut partial_mids: BTreeSet<MembreID> = BTreeSet::new();
+				// calcul des villes
+				for mid in &groupe.participants {
+					if let Ok(membre) = membres.get(*mid) {
+						if let Some(cid) = membre.compte {
+							if let Ok(compte) = comptes.get(cid) {
+								if let Some(adr) = compte.adresse.as_ref() {
+									if let Some(code) = adr.code_postal {
+										let ville = Ville::get_from_code_postal(code);
+										match ville {
+											Some(ville) => {
+												if partial_mids.insert(*mid) {
+													let n = site_stats.villes.villes.entry(ville).or_default();
+													*n += 1;
+													site_stats.villes.total += 1;
+												}
+												if mids.insert(*mid) {
+													let n = stats.villes.villes.entry(ville).or_default();
+													*n += 1;
+													stats.villes.total += 1;
+												}
+											},
+											None => {
+												if partial_mids.insert(*mid) {
+													site_stats.villes.autres += 1;
+													site_stats.villes.total += 1;
+												}
+												if mids.insert(*mid) {
+													stats.villes.autres += 1;
+													stats.villes.total += 1;
+												}
+											},
+										}
+									}
+								} else { 
+									if partial_mids.insert(*mid) {
+										site_stats.villes.inconnues += 1;
+										site_stats.villes.total += 1;
+									}
+									if mids.insert(*mid) {
+										stats.villes.inconnues += 1;
+										stats.villes.total += 1;
 									}
 								}
 							} else { 
@@ -198,21 +228,17 @@ pub fn fill_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, membres: &MembreR
 							stats.villes.total += 1;
 						}
 					}
-				} else { 
-					if partial_mids.insert(*mid) {
-						site_stats.villes.inconnues += 1;
-						site_stats.villes.total += 1;
-					}
-					if mids.insert(*mid) {
-						stats.villes.inconnues += 1;
-						stats.villes.total += 1;
-					}
+				}
+
+				// incr progress
+				if let Some(progress) = progress.as_ref() {
+					let mut progress = progress.lock().expect("Poisoned Lock");
+					*progress += 1;
 				}
 			}
-
 		}
+		Some((stats, gstats))
 	}
-	(stats, gstats)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -222,13 +248,19 @@ pub struct UniqueStats {
 	pub sites: HashMap<String, usize>,
 	pub sems: Vec<String>,
 }
-pub fn get_unique_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>) -> UniqueStats {
+pub fn get_unique_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>, progress: Option<Arc<Mutex<u32>>>, cancel: Option<Arc<Mutex<bool>>>) -> Option<UniqueStats> {
 	let mut stats = UniqueStats::default();
 	let mut all: BTreeSet<MembreID> = BTreeSet::new();
 	let mut ages: HashMap<String, BTreeSet<MembreID>> = HashMap::new();
 	let mut sites: HashMap<String, BTreeSet<MembreID>> = HashMap::new();
 	let mut sems: BTreeSet<String> = BTreeSet::new();
 	for groupe in groupes {
+		// early check for cancel
+		if let Some(cancel_hook) = cancel.as_ref() {
+			if *cancel_hook.lock().expect("Poisoned Lock") {
+				return None;
+			}
+		}
 		if groupe.is_null() {
 			continue;
 		}
@@ -239,6 +271,11 @@ pub fn get_unique_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>) -> UniqueSt
 			all.insert(*participant);
 			age_set.insert(*participant);
 			site_set.insert(*participant);
+		}
+		// incr progress
+		if let Some(progress) = progress.as_ref() {
+			let mut progress = progress.lock().expect("Poisoned Lock");
+			*progress += 1;
 		}
 	}
 	stats.total = all.len();
@@ -257,13 +294,14 @@ pub fn get_unique_stats<'a>(groupes: impl Iterator<Item=&'a Groupe>) -> UniqueSt
 			_ => a.cmp(b)
 		}
 	});
-	stats
+	Some(stats)
 }
 
 #[derive(Debug)]
 pub enum StatsError {
 	FromXlsx(XlsxError),
 	FromIO(std::io::Error),
+	Cancelled,
 }
 impl From<XlsxError> for StatsError {
 	fn from(value: XlsxError) -> Self {
@@ -275,6 +313,7 @@ impl Display for StatsError {
 		match self {
 			StatsError::FromXlsx(e) => write!(f, "Erreur lors de la manipulation du fichier Excel: {}", e),
 			Self::FromIO(e) => write!(f, "Erreur d'entrée/sortie: {}", e),
+			Self::Cancelled => write!(f, "Action annulée par l'utilisateur"),
 		}
 	}
 }
@@ -288,7 +327,19 @@ impl std::error::Error for StatsError {
 		match self {
 			StatsError::FromXlsx(e) => Some(e),
 			Self::FromIO(e) => Some(e),
+			Self::Cancelled => None,
 		}
+	}
+}
+
+fn check_hook(progress: &Option<Arc<Mutex<u32>>>, cancel: &Option<Arc<Mutex<bool>>>) -> bool {
+	if let Some(progress) = progress {
+		*progress.lock().expect("Poisoned Lock") += 1;
+	}
+	if let Some(cancel) = cancel {
+		*cancel.lock().expect("Poisoned Lock")
+	} else {
+		false
 	}
 }
 
@@ -305,185 +356,227 @@ fn get_group_key(id: GroupeID, groupes: &GroupeReg) -> Gkey {
 		Err(_) => (None, None, None, None, None),
 	}
 }
-pub fn print_stats_to_excel(stats: &Stats, gstats: &HashMap<GroupeID, GroupeStats>, groupes: &GroupeReg, ustats: &UniqueStats, out: &str, logger: &dyn Fn(Desc)) -> Result<(), StatsError> {
-	let mut workbook = Workbook::new();
+pub struct StatsToExcel<'a> {
+	pub stats: &'a Stats,
+	pub gstats: &'a HashMap<GroupeID, GroupeStats>,
+	pub groupes: &'a GroupeReg,
+	pub ustats: &'a UniqueStats,
+	pub out: &'a str,
+	pub logger: &'a dyn Fn(Desc),
+	pub progress: Option<Arc<Mutex<u32>>>,
+	pub cancel: Option<Arc<Mutex<bool>>>,
+}
+impl StatsToExcel<'_> {
+	pub fn print(self) -> Result<(), StatsError> {
+		// unwrap the fields for easier access
+		let StatsToExcel { stats, gstats, groupes, ustats, out, logger, progress, cancel } = self;
 
-	// adding raw data worksheet
-	let rawdata_sheet = workbook.add_worksheet();
-	let _ = rawdata_sheet.set_name("Donnees")?;
-	let gdata_table = Table::new()
-		.set_columns(&[
-			TableColumn::new().set_header("Saison"),
-			TableColumn::new().set_header("Activite"),
-			TableColumn::new().set_header("Site"),
-			TableColumn::new().set_header("Categorie"),
-			TableColumn::new().set_header("Semaine"),
-			TableColumn::new().set_header("Capacite"),
-			TableColumn::new().set_header("Inscriptions"),
-			TableColumn::new().set_header("Annulations"),
-			TableColumn::new().set_header("Attente"),
-		])
-		.set_name("groupes");
-	let gstats = {
-		let mut ngs = HashMap::new();
-		for (id, gstat) in gstats {
-			ngs.insert(get_group_key(*id, groupes), *gstat);
+		let mut workbook = Workbook::new();
+
+		// adding raw data worksheet
+		let rawdata_sheet = workbook.add_worksheet();
+		let _ = rawdata_sheet.set_name("Donnees")?;
+		let gdata_table = Table::new()
+			.set_columns(&[
+				TableColumn::new().set_header("Saison"),
+				TableColumn::new().set_header("Activite"),
+				TableColumn::new().set_header("Site"),
+				TableColumn::new().set_header("Categorie"),
+				TableColumn::new().set_header("Semaine"),
+				TableColumn::new().set_header("Capacite"),
+				TableColumn::new().set_header("Inscriptions"),
+				TableColumn::new().set_header("Annulations"),
+				TableColumn::new().set_header("Attente"),
+			])
+			.set_name("groupes");
+		let gstats = {
+			let mut ngs = HashMap::new();
+			for (id, gstat) in gstats {
+				ngs.insert(get_group_key(*id, groupes), *gstat);
+			}
+			ngs
+		};
+		let mut gdata_keys_rows: Vec<[String; 5]> = Vec::new();
+		let mut gdata_data_rows: Vec<[u32; 4]> = Vec::new();
+		let mut sorted_keys: Vec<Gkey> = gstats.keys().cloned().collect();
+		sorted_keys.sort();
+		let glen = sorted_keys.len() as u32;
+		for key in sorted_keys {
+			let gstat = gstats.get(&key).unwrap();
+			gdata_keys_rows.push([
+				key.0.unwrap_or_default(),
+				key.1.unwrap_or_default(),
+				key.2.unwrap_or_default(),
+				key.3.unwrap_or_default(),
+				key.4.unwrap_or_default(),
+			]);
+			gdata_data_rows.push([
+				gstat.capacite as u32,
+				gstat.inscriptions as u32,
+				gstat.annulations as u32,
+				gstat.liste_attente as u32,
+			]);
+			if check_hook(&progress, &cancel) {
+				return Err(StatsError::Cancelled);
+			}
 		}
-		ngs
-	};
-	let mut gdata_keys_rows: Vec<[String; 5]> = Vec::new();
-	let mut gdata_data_rows: Vec<[u32; 4]> = Vec::new();
-	let mut sorted_keys: Vec<Gkey> = gstats.keys().cloned().collect();
-	sorted_keys.sort();
-	let glen = sorted_keys.len() as u32;
-	for key in sorted_keys {
-		let gstat = gstats.get(&key).unwrap();
-		gdata_keys_rows.push([
-			key.0.unwrap_or_default(),
-			key.1.unwrap_or_default(),
-			key.2.unwrap_or_default(),
-			key.3.unwrap_or_default(),
-			key.4.unwrap_or_default(),
-		]);
-		gdata_data_rows.push([
-			gstat.capacite as u32,
-			gstat.inscriptions as u32,
-			gstat.annulations as u32,
-			gstat.liste_attente as u32,
-		]);
-	}
-	rawdata_sheet.write_row_matrix(1, 0, gdata_keys_rows)?;
-	rawdata_sheet.write_row_matrix(1, 5, gdata_data_rows)?;
-	rawdata_sheet.add_table(0, 0, glen, 8, &gdata_table)?;
-	// tables d'enfant unique
-	let udata_site_table = Table::new()
-		.set_columns(&[
-			TableColumn::new().set_header("Site"),
-			TableColumn::new().set_header("Enfants uniques"),
-		])
-		.set_name("unique_sites");
-	let udata_age_table = Table::new()
-		.set_columns(&[
-			TableColumn::new().set_header("Categorie"),
-			TableColumn::new().set_header("Enfants uniques"),
-		])
-		.set_name("unique_categories");
-	let mut udata_site_col: Vec<String> = ustats.sites.keys().cloned().collect();
-	udata_site_col.sort();
-	let mut udata_age_col: Vec<String> = ustats.ages.keys().cloned().collect();
-	udata_age_col.sort();
-	let mut udata_site_datacol: Vec<u32> = Vec::new();
-	for site in &udata_site_col {
-		udata_site_datacol.push(*ustats.sites.get(site).unwrap() as u32);
-	}
-	let mut udata_age_datacol: Vec<u32> = Vec::new();
-	for age in &udata_age_col {
-		udata_age_datacol.push(*ustats.ages.get(age).unwrap() as u32);
-	}
-	let udata_site_len = udata_site_col.len() as u32;
-	let udata_age_len = udata_age_col.len() as u32;
-	//println!("Sites: {:?}", udata_site_col);
-	//println!("Ages: {:?}", udata_age_col);
-	rawdata_sheet.write_column(1, 10, &udata_site_col)?;
-	rawdata_sheet.write_column(1, 11, udata_site_datacol)?;
-	rawdata_sheet.write(1+udata_site_len, 10, "Total")?;
-	rawdata_sheet.write(1+udata_site_len, 11, ustats.total as u32)?;
-	rawdata_sheet.write_column(1, 13, &udata_age_col)?;
-	rawdata_sheet.write_column(1, 14, udata_age_datacol)?;
-	rawdata_sheet.add_table(0, 10, udata_site_len+1, 11, &udata_site_table)?;
-	rawdata_sheet.add_table(0, 13, udata_age_len, 14, &udata_age_table)?;
-	// Tableau pour les stats de ville
-	let ville_table = Table::new()
-		.set_columns(&[
-			TableColumn::new().set_header("Site"), 
-			TableColumn::new().set_header("Longueuil"), 
-			TableColumn::new().set_header("St-Hubert"), 
-			TableColumn::new().set_header("Greenfield Park"), 
-			TableColumn::new().set_header("Autres"), 
-			TableColumn::new().set_header("Inconnues"), 
-			TableColumn::new().set_header("Total"),
-		])
-		.set_name("villes");
-	let at_row = 1;
-	let at_col = 16;
-	rawdata_sheet.write_column(at_row, at_col, &udata_site_col)?;
-	rawdata_sheet.write(at_row + udata_site_len, at_col, "Total")?;
-	for (i, site) in udata_site_col.iter().enumerate() {
-		let mut site_entry = stats.sites.get(site).cloned().unwrap_or_default();
-		let ville_stats = &mut site_entry.villes;
-		let data_row = [
-			*ville_stats.villes.entry(Ville::Longueuil).or_default(),
-			*ville_stats.villes.entry(Ville::StHubert).or_default(),
-			*ville_stats.villes.entry(Ville::GreenfieldPark).or_default(),
-			ville_stats.autres,
-			ville_stats.inconnues,
-			ville_stats.total,
-		];
-		rawdata_sheet.write_row(at_row + i as u32, at_col + 1, data_row)?;
-	}
-	// la ligne de total
-	{
-		let mut total_stats = stats.villes.clone();
-		let data_row = [
-			*total_stats.villes.entry(Ville::Longueuil).or_default(),
-			*total_stats.villes.entry(Ville::StHubert).or_default(),
-			*total_stats.villes.entry(Ville::GreenfieldPark).or_default(),
-			total_stats.autres,
-			total_stats.inconnues,
-			total_stats.total,
-		];
-		rawdata_sheet.write_row(at_row + udata_site_len, at_col + 1, data_row)?;
-	}
-	rawdata_sheet.add_table(at_row-1, at_col, at_row+udata_site_len, at_col + 6, &ville_table)?;
-	rawdata_sheet.autofit();
 
-	// Faire la feuille de stats
-	let stats_sheet = workbook.add_worksheet();
-	stats_sheet.set_name("Stats")?;
-	let percent_format = Format::new().set_num_format("0.00%");
-	// on fait des gros blocs par site de camp
-	let mut at_site = 0; // debut du bloc de site
-	let cols: [String; 6] = [
-				"Capacite".into(), "Inscriptions".into(), "Annulations".into(), "Attente".into(), "% Occupation".into(), "% Annulation".into(),
+		rawdata_sheet.write_row_matrix(1, 0, gdata_keys_rows)?;
+		rawdata_sheet.write_row_matrix(1, 5, gdata_data_rows)?;
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
+
+		rawdata_sheet.add_table(0, 0, glen, 8, &gdata_table)?;
+		// tables d'enfant unique
+		let udata_site_table = Table::new()
+			.set_columns(&[
+				TableColumn::new().set_header("Site"),
+				TableColumn::new().set_header("Enfants uniques"),
+			])
+			.set_name("unique_sites");
+		let udata_age_table = Table::new()
+			.set_columns(&[
+				TableColumn::new().set_header("Categorie"),
+				TableColumn::new().set_header("Enfants uniques"),
+			])
+			.set_name("unique_categories");
+		let mut udata_site_col: Vec<String> = ustats.sites.keys().cloned().collect();
+		udata_site_col.sort();
+		let mut udata_age_col: Vec<String> = ustats.ages.keys().cloned().collect();
+		udata_age_col.sort();
+		let mut udata_site_datacol: Vec<u32> = Vec::new();
+		for site in &udata_site_col {
+			udata_site_datacol.push(*ustats.sites.get(site).unwrap() as u32);
+		}
+		let mut udata_age_datacol: Vec<u32> = Vec::new();
+		for age in &udata_age_col {
+			udata_age_datacol.push(*ustats.ages.get(age).unwrap() as u32);
+		}
+		let udata_site_len = udata_site_col.len() as u32;
+		let udata_age_len = udata_age_col.len() as u32;
+		//println!("Sites: {:?}", udata_site_col);
+		//println!("Ages: {:?}", udata_age_col);
+		rawdata_sheet.write_column(1, 10, &udata_site_col)?;
+		rawdata_sheet.write_column(1, 11, udata_site_datacol)?;
+		rawdata_sheet.write(1+udata_site_len, 10, "Total")?;
+		rawdata_sheet.write(1+udata_site_len, 11, ustats.total as u32)?;
+		rawdata_sheet.write_column(1, 13, &udata_age_col)?;
+		rawdata_sheet.write_column(1, 14, udata_age_datacol)?;
+		rawdata_sheet.add_table(0, 10, udata_site_len+1, 11, &udata_site_table)?;
+		rawdata_sheet.add_table(0, 13, udata_age_len, 14, &udata_age_table)?;
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
+
+		// Tableau pour les stats de ville
+		let ville_table = Table::new()
+			.set_columns(&[
+				TableColumn::new().set_header("Site"), 
+				TableColumn::new().set_header("Longueuil"), 
+				TableColumn::new().set_header("St-Hubert"), 
+				TableColumn::new().set_header("Greenfield Park"), 
+				TableColumn::new().set_header("Autres"), 
+				TableColumn::new().set_header("Inconnues"), 
+				TableColumn::new().set_header("Total"),
+			])
+			.set_name("villes");
+		let at_row = 1;
+		let at_col = 16;
+		rawdata_sheet.write_column(at_row, at_col, &udata_site_col)?;
+		rawdata_sheet.write(at_row + udata_site_len, at_col, "Total")?;
+		for (i, site) in udata_site_col.iter().enumerate() {
+			let mut site_entry = stats.sites.get(site).cloned().unwrap_or_default();
+			let ville_stats = &mut site_entry.villes;
+			let data_row = [
+				*ville_stats.villes.entry(Ville::Longueuil).or_default(),
+				*ville_stats.villes.entry(Ville::StHubert).or_default(),
+				*ville_stats.villes.entry(Ville::GreenfieldPark).or_default(),
+				ville_stats.autres,
+				ville_stats.inconnues,
+				ville_stats.total,
 			];
-	for site in udata_site_col {
-		SiteBlock {
-			percent_format: &percent_format,
-			stats,
-			ustats,
-			cols: &cols,
-			at_site,
-			site: &site,
-			total: TotalStatus::new(false, false, false),
-		}.write(stats_sheet)?;
-		at_site += 4 + ustats.sems.len() as u32 + XLSX_SITE_BLOCK_SPACE; // une ligne par semaine + 4 lignes de titre (et une de total) + 3 lignes de séparation
-	}
-	// gros bloc de total
-	{
-		SiteBlock {
-			percent_format: &percent_format,
-			stats,
-			ustats,
-			cols: &cols,
-			at_site,
-			site: "Total",
-			total: TotalStatus::new(true, false, false),
-		}.write(stats_sheet)?;
-	}
-	stats_sheet.autofit();
+			rawdata_sheet.write_row(at_row + i as u32, at_col + 1, data_row)?;
+		}
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
+		// la ligne de total
+		{
+			let mut total_stats = stats.villes.clone();
+			let data_row = [
+				*total_stats.villes.entry(Ville::Longueuil).or_default(),
+				*total_stats.villes.entry(Ville::StHubert).or_default(),
+				*total_stats.villes.entry(Ville::GreenfieldPark).or_default(),
+				total_stats.autres,
+				total_stats.inconnues,
+				total_stats.total,
+			];
+			rawdata_sheet.write_row(at_row + udata_site_len, at_col + 1, data_row)?;
+		}
+		rawdata_sheet.add_table(at_row-1, at_col, at_row+udata_site_len, at_col + 6, &ville_table)?;
+		rawdata_sheet.autofit();
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
 
-	// Charts
-	let chart_sheet = workbook.add_worksheet();
-	chart_sheet.set_name("Charts")?;
-	chart_occupation_par_categorie(chart_sheet, stats, ustats, 0, 0)?;
-	chart_occupation_annulations_par_semaine(chart_sheet, stats, ustats, 0, 8)?;
-	chart_enfants_uniques_par_site(chart_sheet, stats, ustats, 16, 0)?;
-	chart_occupation_par_site(chart_sheet, stats, ustats, 16, 8)?;
-	chart_proportion_ville(chart_sheet, stats, ustats, 0, 16)?;
+		// Faire la feuille de stats
+		let stats_sheet = workbook.add_worksheet();
+		stats_sheet.set_name("Stats")?;
+		let percent_format = Format::new().set_num_format("0.00%");
+		// on fait des gros blocs par site de camp
+		let mut at_site = 0; // debut du bloc de site
+		let cols: [String; 6] = [
+					"Capacite".into(), "Inscriptions".into(), "Annulations".into(), "Attente".into(), "% Occupation".into(), "% Annulation".into(),
+				];
+		for site in udata_site_col {
+			SiteBlock {
+				percent_format: &percent_format,
+				stats,
+				ustats,
+				cols: &cols,
+				at_site,
+				site: &site,
+				total: TotalStatus::new(false, false, false),
+			}.write(stats_sheet)?;
+			at_site += 4 + ustats.sems.len() as u32 + XLSX_SITE_BLOCK_SPACE; // une ligne par semaine + 4 lignes de titre (et une de total) + 3 lignes de séparation
+			if check_hook(&progress, &cancel) {
+				return Err(StatsError::Cancelled);
+			}
+		}
+		// gros bloc de total
+		{
+			SiteBlock {
+				percent_format: &percent_format,
+				stats,
+				ustats,
+				cols: &cols,
+				at_site,
+				site: "Total",
+				total: TotalStatus::new(true, false, false),
+			}.write(stats_sheet)?;
+		}
+		stats_sheet.autofit();
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
 
-	let file = File::create(out)?;
-	workbook.save_to_writer(file)?;
-	Ok(())
+		// Charts
+		let chart_sheet = workbook.add_worksheet();
+		chart_sheet.set_name("Charts")?;
+		chart_occupation_par_categorie(chart_sheet, stats, ustats, 0, 0)?;
+		chart_occupation_annulations_par_semaine(chart_sheet, stats, ustats, 0, 8)?;
+		chart_enfants_uniques_par_site(chart_sheet, stats, ustats, 16, 0)?;
+		chart_occupation_par_site(chart_sheet, stats, ustats, 16, 8)?;
+		chart_proportion_ville(chart_sheet, stats, ustats, 0, 16)?;
+		if check_hook(&progress, &cancel) {
+			return Err(StatsError::Cancelled);
+		}
+
+		let file = File::create(out)?;
+		workbook.save_to_writer(file)?;
+		Ok(())
+	}
 }
 
 pub fn to_excel_column(mut n: u16) -> String {

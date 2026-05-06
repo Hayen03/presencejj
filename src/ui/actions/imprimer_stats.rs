@@ -1,10 +1,10 @@
 use std::{cell::Cell, collections::HashMap, sync::{Arc, Condvar, Mutex, RwLock}};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
+use ratatui::{buffer::Buffer, layout::{HorizontalAlignment, Rect}, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 use ratatui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, UniqueStats, VilleStats, fill_stats, get_unique_stats, print_stats_to_excel}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::Desc}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, FillStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, StatsToExcel, UniqueStats, VilleStats, get_unique_stats}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::Desc}};
 use crossterm::event as cte;
 
 static QUERY_COL_GUTTER: u16 = 1;
@@ -22,7 +22,9 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 	let screen = StatsScreen::default();
 	let step = screen.get_step();
 	let signal = screen.get_signal();
-	let input = screen.get_input();
+	let new_query_flag = screen.get_new_query_flag();
+	let cancel_hook = screen.get_cancel_hook();
+	let progress_hook = screen.get_progress_hook();
 
 	let thread = std::thread::spawn(move || {
 
@@ -40,13 +42,9 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 			} else {
 				let query = Query::new(grps);
 				// update the text area with the first value
-				{
-					let val = query.morph.get(query.order.get(0).expect("Query order is empty")).map(String::as_str).expect("Morph should have an entry for all gids");
-					// todo! find a way to sync that
-					//*input.write().expect("Poisoned Lock") = new_input(val);
-				}
 				let new_step = Step::QueryCap { query };
 				*step.lock().expect("Poisoned Lock") = new_step;
+				*new_query_flag.lock().expect("Poisoned Lock") = true;
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
@@ -72,6 +70,7 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 			} else {
 				let new_step = Step::QueryAnnulation { query: Query::new(grps) };
 				*step.lock().expect("Poisoned Lock") = new_step;
+				*new_query_flag.lock().expect("Poisoned Lock") = true;
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
@@ -96,6 +95,7 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 			} else {
 				let new_step = Step::QueryAttente { query: Query::new(grps) };
 				*step.lock().expect("Poisoned Lock") = new_step;
+				*new_query_flag.lock().expect("Poisoned Lock") = true;
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
@@ -112,27 +112,69 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 		};
 
 		*step.lock().expect("Poisoned Lock") = Step::Print;
-		let (stats, gstats) = {
+		*progress_hook.lock().expect("Poisoned Lock") = 0;
+		let res = {
 			let groupes = state.groupes.read().expect("Poisoned Lock");
 			let membres = state.membres.read().expect("Poisoned Lock");
 			let comptes = state.comptes.read().expect("Poisoned Lock");
-			fill_stats(groupes.groupes(), &membres, &comptes, &get_annulations, &get_attente, &get_missing_capacite)
+			let mut grps = groupes.groupes();
+			FillStats {
+				groupes: &mut grps,
+				membres: &membres,
+				comptes: &comptes,
+				do_annulation: &get_annulations,
+				do_attente: &get_attente,
+				get_missing_capacite: &get_missing_capacite,
+				progress: Some(progress_hook.clone()),
+				cancel: Some(cancel_hook.clone()),
+			}.fill()
 		};
+		let (stats, gstats) = match res {
+			Some(res) => res,
+			None => {
+				return Err(UIError::CancelAction { desc: "Génération des statistiques annulée par l'utilisateur".into() });
+			}
+		};
+		// check for cancel before next step
+		if *cancel_hook.lock().expect("Poisoned Lock") {
+			return Err(UIError::CancelAction { desc: "Génération des statistiques annulée par l'utilisateur".into() });
+		}
+		*progress_hook.lock().expect("Poisoned Lock") = 0;
 		let ustats = {
 			let groupes = state.groupes.read().expect("Poisoned Lock");
-			get_unique_stats(groupes.groupes())
+			get_unique_stats(groupes.groupes(), Some(progress_hook.clone()), Some(cancel_hook.clone()))
 		};
+		let ustats = match ustats {
+			Some(ustats) => ustats,
+			None => {
+				return Err(UIError::CancelAction { desc: "Génération des statistiques annulée par l'utilisateur".into() });
+			}
+		};
+		// check for cancel before next step
+		if *cancel_hook.lock().expect("Poisoned Lock") {
+			return Err(UIError::CancelAction { desc: "Génération des statistiques annulée par l'utilisateur".into() });
+		}
+		*progress_hook.lock().expect("Poisoned Lock") = 0;
 		let logger = |msg: Desc| {};
 		let print_result = {
 			let groupes = state.groupes.read().expect("Poisoned Lock");
 			let config = state.config.read().expect("Poisoned Lock");
-			print_stats_to_excel(&stats, &gstats, &groupes, &ustats, "stats.xlsx", &logger)
+			StatsToExcel {
+				stats: &stats,
+				gstats: &gstats,
+				groupes: &groupes,
+				ustats: &ustats,
+				out: out_file.to_str().expect("Invalid Path"),
+				logger: &logger,
+				progress: Some(progress_hook.clone()),
+				cancel: Some(cancel_hook.clone()),
+			}.print()
 		};
 
 		Ok(StatsResult { stats, gstats, ustats, status: print_result.is_ok(), print_err: print_result.err()})
 	});
 
-	Ok(crate::ui::UpdateAction::PushSub(Box::new(screen.with_thread(thread))).one())
+	Ok(crate::ui::UpdateAction::Push(Box::new(screen.with_thread(thread))).one())
 }
 
 #[derive(Debug, Default)]
@@ -145,7 +187,7 @@ struct Query<T> {
 	completed: bool,
 	scroll: Cell<usize>,
 }
-impl<'a, T> Query<T> where T: Default + ToString {
+impl<T> Query<T> where T: Default + ToString {
 	fn new(mut groupes: Vec<&Groupe>) -> Self {
 		groupes.sort_by_key(|a| a.desc());
 		let data: HashMap<GroupeID, T> = groupes.iter().map(|g| (g.id, T::default())).collect();
@@ -200,6 +242,12 @@ impl<'a> Step<'a> {
 	fn replace(&mut self, new_step: Self) -> Self {
 		std::mem::replace(self, new_step)
 	}
+	fn get_query(&self) -> Option<&Query<usize>> {
+		match self {
+			Self::QueryAnnulation { query, .. } | Self::QueryAttente { query, .. } | Self::QueryCap { query, .. } => Some(query),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -215,9 +263,12 @@ struct StatsResult {
 #[derive(Debug, Default)]
 struct StatsScreen<'a> {
 	thread: Option<std::thread::JoinHandle<Result<StatsResult, UIError>>>,
-	input: Arc<RwLock<TextArea<'static>>>,
+	input: RwLock<TextArea<'static>>,
 	step: Arc<Mutex<Step<'a>>>,
 	signal: Arc<Condvar>,
+	new_query_flag: Arc<Mutex<bool>>,
+	cancel_hook: Arc<Mutex<bool>>,
+	progress_hook: Arc<Mutex<u32>>,
 }
 impl<'a> StatsScreen<'a> {
 	fn with_thread(mut self, thread: std::thread::JoinHandle<Result<StatsResult, UIError>>) -> Self {
@@ -230,12 +281,33 @@ impl<'a> StatsScreen<'a> {
 	fn get_signal(&self) -> Arc<Condvar> {
 		self.signal.clone()
 	}
-	fn get_input(&self) -> Arc<RwLock<TextArea<'static>>> {
-		self.input.clone()
+	fn get_new_query_flag(&self) -> Arc<Mutex<bool>> {
+		self.new_query_flag.clone()
+	}
+	fn get_cancel_hook(&self) -> Arc<Mutex<bool>> {
+		self.cancel_hook.clone()
+	}
+	fn get_progress_hook(&self) -> Arc<Mutex<u32>> {
+		self.progress_hook.clone()
+	}
+
+	fn sync_query_first_input(&self) {
+		let mut lock = self.new_query_flag.lock().expect("Poisoned Lock");
+		if *lock {
+			*lock = false;
+			if let Some(query) = self.step.lock().expect("Poisoned Lock").get_query() {
+				if !query.order.is_empty() {
+					let val = query.morph.get(query.order.first().expect("Query order is empty")).map(String::as_str).expect("Morph should have an entry for all gids");
+					*self.input.write().expect("Poisoned Lock") = new_input(val);
+				}
+			}
+		}
 	}
 }
 impl<'a> WidgetRef for StatsScreen<'a> {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+		self.sync_query_first_input();
+
 		Clear.render(area, buf);
 		let block = Block::bordered()
 			.border_set(border::THICK)
@@ -243,13 +315,13 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 			.border_style(Style::new().white());
 		match &*self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
-				show_query(" Entrez les Capacités Manquantes ", query, self.input.clone(), block, area, buf);
+				show_query(" Entrez les Capacités Manquantes ", query, &self.input, block, area, buf);
 			},
 			Step::QueryAnnulation { query } => {
-				show_query(" Entrez les Nombres d'Annulation ", query, self.input.clone(), block, area, buf);
+				show_query(" Entrez les Nombres d'Annulation ", query, &self.input, block, area, buf);
 			},
 			Step::QueryAttente { query } => {
-				show_query(" Entrez les Nombres de Participants en Attente ", query, self.input.clone(), block, area, buf);
+				show_query(" Entrez les Nombres de Participants en Attente ", query, &self.input, block, area, buf);
 			},
 			Step::Done { text, scroll, current_max_scroll, .. } => {
 				let block = block
@@ -278,7 +350,10 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 						"Esc".light_blue().bold(),
 						" pour annuler ".gray(),
 					]).centered());
-				let loading = Text::from("Génération des statistiques en cours...").yellow();
+				let loading = Line::from(vec![
+					"Génération des statistiques en cours... ".yellow(),
+					format!("Progess: {}/?", *self.progress_hook.lock().expect("Poisoned Lock")).light_blue(),
+				]);
 				Paragraph::new(loading).block(block).wrap(Wrap { trim: false }).render(area, buf);
 			},
 		}
@@ -286,6 +361,8 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 }
 impl<'a> Screen for StatsScreen<'a> {
 	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
+		self.sync_query_first_input();
+
 		match &mut *self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
 				// update the current morph with the input
@@ -348,7 +425,7 @@ impl<'a> Screen for StatsScreen<'a> {
 					_ => Ok(UpdateAction::Continue.one()),
 				}
 			},
-			_ => {
+			step => {
 				match event {
 					crate::ui::event::Event::Tick => {
 						// check if the thread has finished
@@ -369,7 +446,7 @@ impl<'a> Screen for StatsScreen<'a> {
 							},
 							Ok(Ok(result)) => { // thread completed successfully
 								let text = make_text(&result);
-								*self.step.lock().expect("Poisoned Lock") = Step::Done { result: Box::new(result), text, scroll: 0, current_max_scroll: Cell::new(None) };
+								*step = Step::Done { result: Box::new(result), text, scroll: 0, current_max_scroll: Cell::new(None) };
 								Ok(UpdateAction::Continue.one())
 							},
 						}
@@ -436,7 +513,7 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut Text
 	}
 }
 
-fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, block: Block, area: Rect, buf: &mut Buffer) {
+fn show_query(title: &str, query: &Query<usize>, input: &RwLock<TextArea>, block: Block, area: Rect, buf: &mut Buffer) {
 	let block = block
 		.title_top(Line::from(title).white().bold().centered())
 		.title_bottom(Line::from(vec![
@@ -462,6 +539,7 @@ fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, b
 			current_scroll
 		}
 	};
+	query.scroll.set(scroll);
 	let scroll_end = scroll.saturating_add(inner.height as usize).min(query.order.len());
 	let view = &query.order[scroll..scroll_end];
 
@@ -492,7 +570,7 @@ fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, b
 			if real_i == query.at {
 				let par = Paragraph::new(desc);
 				let par = if par.line_width() > mini_desc_area.width as usize - 3 {
-					let s = desc.grapheme_indices(true).skip(mini_desc_area.width as usize - 3).next();
+					let s = desc.grapheme_indices(true).nth(mini_desc_area.width as usize - 3);
 					if let Some((idx, _)) = s {
 						Paragraph::new(format!("{}...", &desc[..idx]))
 					} else { par }
@@ -513,7 +591,7 @@ fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, b
 			} else {
 				let par = Paragraph::new(desc);
 				let par = if par.line_width() > desc_area.width as usize - 3 {
-					let s = desc.grapheme_indices(true).skip(desc_area.width as usize - 3).next();
+					let s = desc.grapheme_indices(true).nth(desc_area.width as usize - 3);
 					if let Some((idx, _)) = s {
 						Paragraph::new(format!("{}...", &desc[..idx]))
 					} else { par }
@@ -540,7 +618,7 @@ fn show_query(title: &str, query: &Query<usize>, input: Arc<RwLock<TextArea>>, b
 			let desc = query.descs.get(gid).map(Arc::as_ref).unwrap_or("???");
 			let par = Paragraph::new(desc);
 			let par = if par.line_width() > desc_area.width as usize - 3 {
-				let s = desc.grapheme_indices(true).skip(desc_area.width as usize - 3).next();
+				let s = desc.grapheme_indices(true).nth(desc_area.width as usize - 3);
 				if let Some((idx, _)) = s {
 					Paragraph::new(format!("{}...", &desc[..idx]))
 				} else { par }
@@ -588,7 +666,8 @@ fn move_cursor(query: &mut Query<usize>, new_pos: usize, input: &mut TextArea) {
 
 fn new_input<'a>(starting_text: &str) -> TextArea<'a> {
 	let mut input = TextArea::new(vec![starting_text.into()]);
-	input.set_style(Style::new().white().on_gray());
+	input.set_style(Style::new().white().on_gray().bold());
+	input.set_alignment(HorizontalAlignment::Right);
 	input.move_cursor(ratatui_textarea::CursorMove::End);
 	input
 }
@@ -606,7 +685,7 @@ fn make_text<'a>(result: &StatsResult) -> Text<'a> {
 	} else {
 		text.push_line(Line::from("Le fichier n'a pu être enregistré...").red());
 	}
-
+	
 	text
 }
 

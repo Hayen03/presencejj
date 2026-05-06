@@ -268,13 +268,22 @@ impl AppState {
         *old_dir = dir;
         Some(path.into())
     }
+	pub fn get_in_xlsx(&self, title: &str) -> Option<PathBuf> {
+        let old_dir = self.old_out_dir.read().unwrap();
+        let file = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_path())
+            .add_filter("xlsx", &["xlsx"])
+			.pick_file();
+        file
+    }
     pub fn get_out_xlsx(&self, title: &str) -> Option<PathBuf> {
         let old_dir = self.old_out_dir.read().unwrap();
         let file = rfd::FileDialog::new()
             .set_title(title)
             .set_directory(old_dir.as_path())
             .add_filter("xlsx", &["xlsx"])
-            .pick_file();
+			.save_file();
         file
     }
 }
@@ -454,6 +463,7 @@ impl PollMenuRequest {
 				}
 			}))
 			.with_title(self.data.title)
+			.with_size(ScreenSize::Fit { min: 0, max: u16::MAX }, ScreenSize::Fit { min: 0, max: u16::MAX })
 	}
 }
 

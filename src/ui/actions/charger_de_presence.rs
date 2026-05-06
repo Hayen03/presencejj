@@ -3,11 +3,7 @@ use std::sync::Arc;
 use crate::{extract::{ExtractError, excel::DataColConfig}, cdj::{comptes::CompteID, groupes::GroupeID, membres::MembreID}, ui::{AppState, UIError, screens::{Desc}}};
 
 pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
-	let filepath = rfd::FileDialog::new()
-		.set_title("Sélectionner le fichier de présence")
-		.add_filter("excel", &["xlsx"])
-		.set_directory(state.old_in_dir.read().expect("Poisoned Lock").as_path())
-		.pick_file();
+	let filepath = state.get_in_xlsx("Sélectionner le fichier de présence");
 	if let Some(filepath) = filepath {
 		// update the old_in_dir to the parent of the selected file
 		if let Some(parent) = filepath.parent() {

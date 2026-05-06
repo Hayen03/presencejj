@@ -1,4 +1,4 @@
-use crate::{cdj::groupes::GroupeID, cli::{ProgramData, actions::ActionResult}, data::stats::{fill_stats, get_unique_stats, print_stats_to_excel}, ui::screens::Desc};
+use crate::{cdj::groupes::GroupeID, cli::{ProgramData, actions::ActionResult}, data::stats::{FillStats, StatsToExcel, get_unique_stats}, ui::screens::Desc};
 
 
 pub fn print_stats(program: &ProgramData, out: String, do_annulation: bool, do_attente: bool) -> ActionResult {
@@ -9,10 +9,31 @@ pub fn print_stats(program: &ProgramData, out: String, do_annulation: bool, do_a
         let _ = program.out.write_line(msg.as_str());
     };
 
-    let (stats, gstats) = fill_stats(program.groupes.groupes(), &program.membres, &program.comptes, &get_annulation, &get_attente, &get_missing_capacite);
-    let ustats = get_unique_stats(program.groupes.groupes());
+    let (stats, gstats) = {
+        let mut grps = program.groupes.groupes();
+        FillStats {
+            groupes: &mut grps,
+            membres: &program.membres,
+            comptes: &program.comptes,
+            do_annulation: &get_annulation,
+            do_attente: &get_attente,
+            get_missing_capacite: &get_missing_capacite,
+            progress: None,
+            cancel: None,
+        }.fill().expect("Should be Some(_)")
+    };
+    let ustats = get_unique_stats(program.groupes.groupes(), None, None).expect("Should be Some(_)");
 
-    let _res = print_stats_to_excel(&stats, &gstats, &program.groupes, &ustats, &out.to_string(), &logger);
+    let _res = StatsToExcel {
+        stats: &stats,
+        gstats: &gstats,
+        groupes: &program.groupes,
+        ustats: &ustats,
+        out: &out,
+        logger: &logger,
+        progress: None,
+        cancel: None,
+    }.print();
     if let Err(e) = _res {
         let _ = program.err.write_line(&format!("Erreur lors de l'écriture des statistiques: {}", e));
         return Err(Box::new(e).into());

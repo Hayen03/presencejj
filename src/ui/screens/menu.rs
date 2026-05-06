@@ -1,7 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::Rect, style::Style, symbols::border, text::Line, widgets::{Block, WidgetRef}};
+use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Clear, Widget, WidgetRef}};
 
 use crate::ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, event::{self}};
 use crate::ui::actions;
@@ -22,11 +22,12 @@ impl<Ids> Debug for MenuItem<Ids> where Ids: ToString + Debug {
 pub struct Menu<'a, Ids> where Ids: ToString + Debug {
 	items: Box<[MenuItem<Ids>]>,
 	selected: usize,
-	title: String,
+	title: Option<String>,
 	size: (ScreenSize, ScreenSize),
 	widget: ratatui::widgets::List<'a>,
 	_block: Block<'a>,
 	fit_width: u16,
+	title_width: u16,
 	cancel_action: Option<Box<actions::Action>>,
 }
 impl<Ids> Debug for Menu<'_, Ids> where Ids: ToString + Debug {
@@ -44,16 +45,22 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 	pub fn new(items: Box<[MenuItem<Ids>]>) -> Self {
 		let fit_width = items.iter().map(|item| item.id.to_string().graphemes(true).count() as u16).max().unwrap_or(0);
 		let block = Block::bordered()
-			.title(" Menu ")
-			.border_set(border::THICK);
+			.title_top(" Menu ")
+			.border_set(border::THICK)
+			.bg(Color::Black);
 		let widget = ratatui::widgets::List::new(items.iter().map(|item| Line::from(item.id.to_string())))
 			.style(Style::new().white())
 			.highlight_style(Style::new().yellow().on_dark_gray())
 			.block(block.clone());
-		Menu { items, selected: 0, title: String::new(), widget, _block: block, size: (ScreenSize::Fill, ScreenSize::Fill), fit_width, cancel_action: None }
+		Menu { items, selected: 0, title: None, widget, _block: block, size: (ScreenSize::Fill, ScreenSize::Fill), fit_width, title_width: 0, cancel_action: None }
 	}
 	pub fn with_title(mut self, title: String) -> Self {
-		self.title = title;
+		let ln = Line::from(format!(" {title} ")).centered();
+		self.title_width = ln.spans.iter().map(|s| s.width()).sum::<usize>() as u16;
+		// remove previous title if exists
+		self._block = self._block.title_top("").title_top(ln);
+		self.title = Some(title);
+		self.widget = self.widget.block(self._block.clone());
 		self
 	}
 	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
@@ -144,7 +151,7 @@ impl<'a, Ids> Screen for Menu<'a, Ids> where Ids: ToString + Debug {
 				ScreenSize::Length(l) => l,
 				ScreenSize::Ratio(r) => (area.width as f32 * r).floor() as u16,
 				ScreenSize::Fit {min, max} => {
-					(self.fit_width + 4).clamp(min, max)
+					(self.fit_width + 4).max(self.title_width + 4).clamp(min, max)
 				},
 			};
 			let height = match self.size.1 {
@@ -167,6 +174,7 @@ impl<'a, Ids> Screen for Menu<'a, Ids> where Ids: ToString + Debug {
 				.block(self._block.clone()
 					.border_style(Style::new().gray()))
 		};
+		Clear.render(area, buf);
 		ratatui::widgets::StatefulWidget::render(&widget, area, buf, &mut state);
 	}
 }
