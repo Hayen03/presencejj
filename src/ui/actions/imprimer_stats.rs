@@ -82,10 +82,10 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 			missing_caps.get(&gid).copied().unwrap_or_default()
 		};
 
-		let do_annulation = PollMenu::poll_bool("Voulez-vous rentrez les nombres d'annulation?".into(), state.clone()).unwrap_or(false);
+		let do_annulation = PollMenu::poll_bool("Voulez-vous rentrez les nombres d'annulation?".into(), state.clone()).unwrap_or(false); // unwrap_or(false)
 		let annulations: HashMap<GroupeID, usize> = if do_annulation {
 			let groupes = state.groupes.read().expect("Poisoned Lock");
-			let grps = groupes.groupes().filter(|g| g.id != NULL_GROUPE.id && g.capacite.is_none()).collect::<Vec<_>>();
+			let grps = groupes.groupes().filter(|g| g.id != NULL_GROUPE.id).collect::<Vec<_>>();
 			if grps.is_empty() {
 				HashMap::new()
 			} else {
@@ -110,7 +110,7 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 		let do_attente = PollMenu::poll_bool("Voulez-vous rentrez les nombres d'attente?".into(), state.clone()).unwrap_or(false);
 		let attentes: HashMap<GroupeID, usize> = if do_attente {
 			let groupes = state.groupes.read().expect("Poisoned Lock");
-			let grps = groupes.groupes().filter(|g| g.id != NULL_GROUPE.id && g.capacite.is_none()).collect::<Vec<_>>();
+			let grps = groupes.groupes().filter(|g| g.id != NULL_GROUPE.id).collect::<Vec<_>>();
 			if grps.is_empty() {
 				HashMap::new()
 			} else {

@@ -7,6 +7,7 @@ use crate::prelude::*;
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use super::{ParsingError, ParsingResult};
 
@@ -17,7 +18,7 @@ lazy_static! {
 	pub static ref ADRESSE_FULL_REGEX: Regex = Regex::new(r"^\s*(?P<num>\d+)\s*(?:,\s*)?(?P<rue>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)(?:\s*(,\s*)?#(?P<app>\d+))?\s*,\s*(?P<ville>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<province>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<pays>[a-zA-Z0-9éÉàÀùÙÇçïÏôÔêÊèÈâÂûÛëËäÄöÖüÜòÒ\- .']+)\s*,\s*(?P<codepostal>[a-zA-Z][0-9][a-zA-Z] ?[0-9][a-zA-Z][0-9])\s*$").unwrap();
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Adresse {
 	pub numero: O<i32>,
 	pub rue: O<String>,
@@ -186,6 +187,23 @@ lazy_static! {
 	static ref PAYS_REGISTRY: SimpleReg<Pays, str> = SimpleReg::new();
 }
 */
+impl Serialize for Pays {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.ptr.as_ref().serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for Pays {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		Ok(Pays::from(Arc::<str>::from(s)))
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Province {
@@ -228,6 +246,23 @@ impl From<Arc<str>> for Province {
 /* lazy_static! {
 	static ref PROVINCE_REGISTRY: SimpleReg<Province, str> = SimpleReg::new();
 } */
+impl Serialize for Province {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.ptr.as_ref().serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for Province {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		Ok(Province::from(Arc::<str>::from(s)))
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Ville {
@@ -273,6 +308,23 @@ impl From<Arc<str>> for Ville {
 /* lazy_static! {
 	static ref VILLE_REGISTRY: SimpleReg<Ville, str> = SimpleReg::new();
 } */
+impl serde::Serialize for Ville {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.ptr.as_ref().serialize(serializer)
+	}
+}
+impl<'de> serde::Deserialize<'de> for Ville {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		Ok(Ville::from(Arc::<str>::from(s)))
+	}
+}
 
 /*
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Default)]
@@ -373,7 +425,7 @@ lazy_static! {
 		Regex::new(r"^\s*([A-Za-z]\d[A-Za-z])\s*(\d[A-Za-z]\d)\s*$").unwrap();
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct CodePostal([u8; 6]);
 #[allow(unused)]
 impl CodePostal {

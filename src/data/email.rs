@@ -6,6 +6,7 @@ use super::{ParsingError, ParsingResult};
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 
 lazy_static! {
@@ -79,5 +80,22 @@ impl str::FromStr for Email {
 	type Err = ParsingError;
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Self::parse(s)
+	}
+}
+impl Serialize for Email {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{		
+		self.value.as_ref().serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for Email {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		Self::parse(&s).map_err(serde::de::Error::custom)
 	}
 }

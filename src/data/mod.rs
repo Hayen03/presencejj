@@ -2,6 +2,7 @@ use crate::prelude::*;
 use std::{error::Error, fmt::{self, Display}, str::FromStr};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 pub mod adresse;
 pub mod cam;
@@ -18,7 +19,7 @@ lazy_static! {
 	pub static ref adr_re: Regex = Regex::new(r"(:?[\w-]+\s*:\s*)?(?P<num>\d+)\s*,?\s*(?:(?:(?P<rue>[\w\s-]+?)\s*(?P<ville>[\w-]+))|(?:(?P<ruewapp>[\w\s-]+?)\s*#(?:(?P<app>\d+)|(?P<falseapp>-))\s*,\s*(?P<villewapp>[\w-]+)))\s*,\s*(?P<province>[\w -]+?)\s*,\s*(?P<pays>[\w -]+?)\s*,\s*(?P<code>[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d)").unwrap();
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash, Serialize, Deserialize)]
 pub enum Genre {
     #[default]
     Homme,
@@ -49,7 +50,7 @@ impl FromStr for Genre {
 
 static TAILLES: [Taille; 6] = [Taille::XS, Taille::S, Taille::M, Taille::L, Taille::XL, Taille::XXL];
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
 pub enum Taille {
     XS,
     S,
@@ -90,7 +91,7 @@ impl Taille {
 	}
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
 pub struct BoolJustifie {
     pub reponse: bool,
     pub justification: O<String>,

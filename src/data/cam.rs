@@ -6,6 +6,7 @@ use super::{Genre, ParsingError, ParsingResult};
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 lazy_static! {
 	pub static ref NAM_RE: Regex =
@@ -22,7 +23,7 @@ lazy_static! {
 	.unwrap();
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Default, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Default, Copy, Deserialize, Serialize)]
 pub struct NAM([u8; 12]);
 impl AsRef<[u8; 12]> for NAM {
 	fn as_ref(&self) -> &[u8; 12] {
@@ -126,7 +127,7 @@ impl fmt::Display for NAM {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Default, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Default, Copy, Deserialize, Serialize)]
 pub struct CAM {
 	pub num: NAM,
 	pub exp: (i32, u8),

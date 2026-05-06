@@ -10,6 +10,7 @@ pub mod tui;
 pub mod event;
 pub mod actions;
 pub mod screens;
+pub mod serial;
 
 pub fn line_width(line: &Line) -> usize {
 	line.spans.iter().map(|span| span.width()).sum()

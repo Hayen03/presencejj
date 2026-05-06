@@ -5,12 +5,13 @@ use super::{ParsingError, ParsingResult};
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 lazy_static! {
 	static ref TEL_RE: Regex = Regex::new(r"^\s*(?:\+?(?<pays>\d)\s*-?\s*)?(?<reg>(?:\d{3})|(?:\(\s*\d{3}\s*\)))\s*-?\s*(?<a>\d{3})\s*-?\s*(?<b>\d{4})\s*$").unwrap();
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Tel([u8; 10]);
 #[allow(unused)]
 impl Tel {
