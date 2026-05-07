@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{data::{cam::CAM, BoolJustifie}, prelude::*};
 
 pub static MAL_ASTHME: &str = "Asthme";
@@ -10,7 +12,7 @@ pub static ALL_ANIMAUX: &str = "Animaux";
 pub static ALL_INSECTES: &str = "Insectes";
 pub static ALL_PENICILINE: &str = "Péniciline";
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
 pub struct FicheSante {
     pub allergies: Vec<String>,
     pub maladies: Vec<String>,
@@ -21,7 +23,7 @@ pub struct FicheSante {
     pub auth_medicaments: Medicaments,
 }
 
-#[derive(Debug, Clone, Copy, Default, Hash)]
+#[derive(Debug, Clone, Copy, Default, Hash, Serialize, Deserialize)]
 pub struct Medicaments {
     pub sirop_toux: O<bool>,
     pub anti_emetique: O<bool>,

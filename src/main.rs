@@ -32,6 +32,7 @@ enum AppError {
     Compte { src: CompteErr },
     Input { src: TextInputError },
     UnexpectedState { desc: String },
+    Other { src: Box<dyn std::error::Error + Send + Sync> },
 }
 impl From<UIError> for AppError {
     fn from(_src: UIError) -> Self {
@@ -47,6 +48,7 @@ impl From<UIError> for AppError {
             UIError::Compte { src } => AppError::Compte { src },
             UIError::Input { src } => AppError::Input { src },
             UIError::UnexpectedState { desc } => AppError::UnexpectedState { desc },
+            UIError::Others { src } => AppError::Other { src },
         }
     }
 }
@@ -79,6 +81,7 @@ impl std::fmt::Display for AppError {
             AppError::Compte { src } => write!(f, "Compte error: {}", src),
             AppError::Input { src } => write!(f, "Input error: {}", src),
             AppError::UnexpectedState { desc } => write!(f, "Unexpected state: {}", desc),
+            AppError::Other { src } => write!(f, "{}", src),
         }
     }
 }
@@ -99,6 +102,7 @@ impl std::error::Error for AppError {
             AppError::Panic => None,
             AppError::ExcelError => None,
             AppError::UnexpectedState { .. } => None,
+            AppError::Other { src } => Some(src.as_ref()),
         }
     }
 }

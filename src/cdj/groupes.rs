@@ -1,12 +1,13 @@
 use std::{cmp::min, collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::{prelude::*, print::typst::PresenceSDJInfo};
 use super::{membres::{Interet, Membre, MembreID, MembreReg}, RegError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct GroupeID(pub u32);
 impl Display for GroupeID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,7 +42,7 @@ impl std::fmt::Display for SousGroupeError {
 }
 impl std::error::Error for SousGroupeError {}
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Groupe {
     pub id: GroupeID,
     pub saison: O<String>,
@@ -286,6 +287,27 @@ impl GroupeReg {
         self.reg.values().filter_map(|g| g.category.clone()).collect()
     }
 }
+impl Serialize for GroupeReg {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.reg.values().collect::<Vec<_>>().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for GroupeReg {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let groupes = Vec::<Groupe>::deserialize(deserializer)?;
+        let mut reg = HashMap::new();
+        for groupe in groupes {
+            reg.insert(groupe.id, groupe);
+        }
+        Ok(GroupeReg { reg })
+    }
+}
 
 pub fn rank_points(rank: usize) -> u32 {
     match rank {
@@ -393,7 +415,7 @@ impl<'a, Src: Iterator<Item=&'a mut Groupe>> Iterator for GroupeIterMut<'a, Src>
     
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SousGroupe {
     pub profil: O<Interet>,
     pub disc: u32,

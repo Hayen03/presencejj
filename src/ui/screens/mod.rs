@@ -4,6 +4,8 @@ mod progress_log_screen;
 mod info_screen;
 mod input_screen;
 mod menu;
+mod task_screen;
+mod text_screen;
 
 pub use progress::ProgressBar;
 pub use error_screen::*;
@@ -11,7 +13,31 @@ pub use progress_log_screen::*;
 pub use info_screen::*;
 pub use input_screen::*;
 pub use menu::*;
+pub use task_screen::*;
+pub use text_screen::*;
 use ratatui::{style::Stylize, text::{Line, Text}, widgets::{Paragraph, Wrap}};
+use lazy_static::lazy_static;
+
+lazy_static!{
+	pub static ref ENTER_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Entrée".light_blue().bold(),
+		" pour continuer ".gray(),
+	]).centered();
+	pub static ref ESC_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"ESC".light_blue().bold(),
+		" pour annuler ".gray(),
+	]).centered();
+	pub static ref ENTER_ESC_INSTRUCTIONS: Line<'static> = Line::from(vec![
+		" Appuyez sur ".gray(),
+		"Entrée".light_blue().bold(),
+		" pour valider, ".gray(),
+		"Esc".light_blue().bold(),
+		" pour annuler ".gray(),
+	]).centered();
+}
+
 
 #[derive(Debug, Clone, Default)]
 pub enum Desc {

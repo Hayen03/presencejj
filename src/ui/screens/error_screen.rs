@@ -3,20 +3,15 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use ratatui::{style::{Style, Stylize}, text::{Line, Text, ToText}, widgets::{Block, Paragraph, Widget, WidgetRef}};
 
-use crate::ui::{AppState, Screen, line_width};
+use crate::ui::{AppState, Screen, line_width, screens::ENTER_INSTRUCTIONS};
 
 lazy_static!(
 	pub static ref ERROR_SCREEN_TITLE: Line<'static> = Line::from(" Une erreur est survenue! ").centered().red().bold();
 	pub static ref ERROR_SCREEN_TITLE_WIDTH: u16 = (line_width(&ERROR_SCREEN_TITLE) as u16).saturating_add(2);
-	pub static ref ERROR_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
-		" Appuyez sur ".gray(),
-		"Entrée".light_blue().bold(),
-		" pour continuer ".gray(),
-	]).centered();
-	pub static ref ERROR_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&ERROR_SCREEN_INSTRUCTIONS) as u16).saturating_add(2);
+	pub static ref ERROR_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&ENTER_INSTRUCTIONS) as u16).saturating_add(2);
 	pub static ref ERROR_SCREEN_BLOCK: Block<'static> = Block::bordered()
 		.title(ERROR_SCREEN_TITLE.clone())
-		.title_bottom(ERROR_SCREEN_INSTRUCTIONS.clone())
+		.title_bottom(ENTER_INSTRUCTIONS.clone())
 		.border_set(ratatui::symbols::border::THICK)
 		.border_style(Style::new().red())
 		.bg(ratatui::style::Color::Black);

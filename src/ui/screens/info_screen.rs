@@ -2,17 +2,12 @@ use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 // use unicode_width::UnicodeWidthStr;
 
-use crate::ui::{Screen, ScreenSize, line_width};
+use crate::ui::{Screen, ScreenSize, line_width, screens::ENTER_INSTRUCTIONS};
 
 lazy_static!{
-	pub static ref INFO_SCREEN_INSTRUCTIONS: Line<'static> = Line::from(vec![
-		" Appuyez sur ".gray(),
-		"Entrée".light_blue().bold(),
-		" pour continuer. ".gray(),
-	]).centered();
-	pub static ref INFO_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&INFO_SCREEN_INSTRUCTIONS) as u16).saturating_add(2);
+	pub static ref INFO_SCREEN_INSTRUCTION_WIDTH: u16 = (line_width(&ENTER_INSTRUCTIONS) as u16).saturating_add(2);
 	pub static ref INFO_SCREEN_BLOCK: Block<'static> = Block::bordered()
-		.title_bottom(INFO_SCREEN_INSTRUCTIONS.clone())
+		.title_bottom(ENTER_INSTRUCTIONS.clone())
 		.border_set(border::THICK)
 		.border_style(Style::new().yellow())
 		.bg(Color::Black);

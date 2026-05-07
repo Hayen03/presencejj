@@ -4,25 +4,18 @@ use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 use ratatui_textarea::{Input, Key, TextArea};
 
-use crate::ui::{AppState, Screen, ScreenSize, UIError, actions::UpdateActions, line_width, str_width};
+use crate::ui::{AppState, Screen, ScreenSize, UIError, actions::UpdateActions, line_width, screens::ENTER_ESC_INSTRUCTIONS, str_width};
 
 pub type TextInputValidation = Arc<dyn (Fn(&str) -> bool) + Send + Sync>;
 pub type TextInputAfterResult = Result<UpdateActions, UIError>;
 pub type TextInputAfter = Box<dyn Fn(Option<&str>, Arc<AppState>) -> TextInputAfterResult>;
 
 lazy_static!{
-	pub static ref INPUT_BLOCK_INSTRUCTIONS: Line<'static> = Line::from(vec![
-		" Appuyez sur ".gray(),
-		"Entrée".light_blue().bold(),
-		" pour valider, ".gray(),
-		"Esc".light_blue().bold(),
-		" pour annuler ".gray(),
-	]).centered();
-	pub static ref INPUT_BLOCK_INSTRUCTION_WIDTH: u16 = (line_width(&INPUT_BLOCK_INSTRUCTIONS) as u16).saturating_add(2);
+	pub static ref INPUT_BLOCK_INSTRUCTION_WIDTH: u16 = (line_width(&ENTER_ESC_INSTRUCTIONS) as u16).saturating_add(2);
 	pub static ref INPUT_SCREEN_BLOCK: Block<'static> = Block::bordered()
 		.border_set(border::THICK)
 		.border_style(Style::new().white())
-		.title_bottom(INPUT_BLOCK_INSTRUCTIONS.clone())
+		.title_bottom(ENTER_ESC_INSTRUCTIONS.clone())
 		.bg(Color::Black);
 	pub static ref INPUT_SCREEN_SUB_BLOCK: Block<'static> = Block::bordered()
 		.border_set(border::ONE_EIGHTH_WIDE)

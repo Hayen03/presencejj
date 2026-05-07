@@ -1,6 +1,7 @@
 use std::{collections::{HashMap, HashSet}, fmt::Display, hash::{DefaultHasher, Hash, Hasher}};
 
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 
 use crate::data::adresse::Adresse;
 use crate::data::tel::Tel;
@@ -10,7 +11,7 @@ use crate::data::email::Email;
 use super::{membres::{Membre, MembreID}, RegError};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct CompteID(pub u32);
 impl Display for CompteID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -22,7 +23,7 @@ lazy_static!{
     pub static ref NULL_COMPTE: Compte = Compte::default();
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Compte {
     pub id: CompteID,
     pub mandataire: String,
@@ -147,6 +148,27 @@ impl CompteReg {
     }
     pub fn comptes_mut<'a>(&'a mut self) -> CompteIterMut<'a, impl Iterator<Item=&'a mut Compte>> {
         CompteIterMut(self.reg.values_mut())
+    }
+}
+impl Serialize for CompteReg {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.reg.values().collect::<Vec<_>>().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for CompteReg {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let comptes = Vec::<Compte>::deserialize(deserializer)?;
+        let mut reg = CompteReg::default();
+        for compte in comptes {
+            reg.add(compte).map_err(serde::de::Error::custom)?;
+        }
+        Ok(reg)
     }
 }
 

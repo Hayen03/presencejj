@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 use crate::{data::{tel::Tel, Genre, ParsingError, Taille}, prelude::*};
@@ -6,7 +7,7 @@ use std::{cmp::Ordering, collections::HashMap, fmt::Display, hash::{DefaultHashe
 
 use super::{comptes::CompteID, fiche_sante::FicheSante, RegError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct MembreID(pub u32);
 impl Display for MembreID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -18,7 +19,7 @@ lazy_static!{
     pub static ref NULL_MEMBRE: Membre = Membre::default();
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Membre {
     pub id: MembreID,
     pub nom: String,
@@ -78,7 +79,7 @@ impl Membre {
 
 pub type Interets = [O<Interet>; 4];
 pub static INTERETS_POINTS: [u32; 4] = [8, 4, 2, 0];
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, Hash, Serialize, Deserialize)]
 pub enum Interet {
     Science,
     Sport,
@@ -118,20 +119,20 @@ impl Interet {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Contact {
     pub nom: String,
     pub tel: O<Tel>,
     pub lien: O<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Quitte {
     pub avec: Vec<String>,
     pub mdp: O<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Piscine {
     pub partage: O<bool>,
     pub vfi: O<bool>,
@@ -189,6 +190,27 @@ impl MembreReg {
     }
     pub fn membres_mut(&mut self) -> MembreIterMut<'_, impl Iterator<Item=&'_ mut Membre>> {
         MembreIterMut(self.reg.values_mut())
+    }
+}
+impl Serialize for MembreReg {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        self.reg.values().collect::<Vec<&Membre>>().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for MembreReg {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let membres = Vec::<Membre>::deserialize(deserializer)?;
+        let mut this = Self::default();
+        for m in membres {
+            this.add(m).map_err(|e| serde::de::Error::custom(format!("MembreReg: {}", e)))?;
+        }
+        Ok(this)
     }
 }
 

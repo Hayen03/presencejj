@@ -47,6 +47,7 @@ pub enum UIError {
 	Compte { src: CompteErr },
 	Input { src: TextInputError },
 	UnexpectedState { desc: String },
+	Others { src: Box<dyn std::error::Error + Send + Sync> },
 }
 impl From<std::io::Error> for UIError {
 	fn from(src: std::io::Error) -> Self {
@@ -124,6 +125,7 @@ impl std::fmt::Display for UIError {
 			UIError::Compte { src } => write!(f, "Compte error: {}", src),
 			UIError::Input { src } => write!(f, "Input error: {}", src),
 			UIError::UnexpectedState { desc } => write!(f, "Unexpected state: {}", desc),
+			UIError::Others { src } => write!(f, "Other error: {}", src),
 		}
 	}
 }
@@ -141,6 +143,7 @@ impl std::error::Error for UIError {
 			UIError::Compte { src } => Some(src),
 			UIError::Input { src } => Some(src),
 			UIError::UnexpectedState { .. } => None,
+			UIError::Others { src } => Some(src.as_ref()),
 		}
 	}
 }
@@ -302,6 +305,24 @@ impl AppState {
             .set_title(title)
             .set_directory(old_dir.as_path())
             .add_filter("xlsx", &["xlsx"])
+			.save_file();
+        file
+    }
+	pub fn get_in_pres(&self, title: &str) -> Option<PathBuf> {
+        let old_dir = self.old_out_dir.read().unwrap();
+        let file = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_path())
+            .add_filter("pres", &["pres"])
+			.pick_file();
+        file
+    }
+	pub fn get_out_pres(&self, title: &str) -> Option<PathBuf> {
+        let old_dir = self.old_out_dir.read().unwrap();
+        let file = rfd::FileDialog::new()
+            .set_title(title)
+            .set_directory(old_dir.as_path())
+            .add_filter("pres", &["pres"])
 			.save_file();
         file
     }

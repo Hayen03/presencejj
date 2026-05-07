@@ -3,14 +3,9 @@ use std::{cell::Cell, sync::{Arc, Mutex}};
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Borders, Clear, Gauge, Widget, WidgetRef}};
 
-use crate::ui::{Screen, UIError, screens::{Logger, ScrollMode}};
+use crate::ui::{Screen, UIError, screens::{Logger, ScrollMode, ENTER_INSTRUCTIONS}};
 
 lazy_static!{
-	pub static ref PROGRESS_LOG_FINISHED_INSTRUCTIONS: Line<'static> = Line::from(vec![
-		" Terminé ! Appuyez sur ".gray(),
-		"Entrée".light_blue().bold(),
-		" pour continuer ".gray(),
-	]).centered();
 	pub static ref PROGRESS_LOG_SCREEN_BLOCK: Block<'static> = Block::bordered()
 		.border_set(border::THICK)
 		.border_style(Style::new().white())
@@ -76,7 +71,7 @@ impl WidgetRef for ProgressLogScreen<'_> {
 		Clear.render(area, buf);
 
 		let instructions = if self.is_done() {
-			PROGRESS_LOG_FINISHED_INSTRUCTIONS.clone()
+			ENTER_INSTRUCTIONS.clone()
 		} else {
 			Line::from(vec![
 				format!(" Chargement en cours... {:.2}% Appuyez sur ", self.ratio() * 100.0).gray(),
