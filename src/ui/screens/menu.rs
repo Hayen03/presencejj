@@ -152,9 +152,9 @@ impl<'a, Ids> Screen for Menu<'a, Ids> where Ids: ToString + Debug {
 		let block = MENU_BLOCK.clone()
 			.title_top(if let Some(title) = &self.title { title.clone() } else { MENU_DEFAULT_TITLE.clone() });
 		let block = if focus {
-			block.style(*MENU_BLOCK_FOCUSED_STYLE)
+			block.border_style(*MENU_BLOCK_FOCUSED_STYLE)
 		} else {
-			block.style(*MENU_BLOCK_UNFOCUSED_STYLE)
+			block.border_style(*MENU_BLOCK_UNFOCUSED_STYLE)
 		};
 		let inner = block.inner(area);
 		let mut state = ratatui::widgets::ListState::default().with_selected(Some(self.selected));
