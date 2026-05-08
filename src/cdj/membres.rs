@@ -74,6 +74,11 @@ impl Membre {
             c
         }
     }
+    pub fn age(&self) -> u8 {
+        let today = today();
+        let diff = today - self.naissance;
+        (diff.num_days() / 365) as u8
+    }
 }
 
 
@@ -184,6 +189,9 @@ impl MembreReg {
             Option::None => Err(RegError::NoSuchItem(mid)),
             Option::Some(m) => Ok(m),
         }
+    }
+    pub fn update(&mut self, membre: Membre) {
+        self.reg.insert(membre.id, membre);
     }
     pub fn membres(&self) -> MembreIter<'_, impl Iterator<Item=&'_ Membre>> {
         MembreIter(self.reg.values())

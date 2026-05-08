@@ -10,6 +10,7 @@ mod groupe_table;
 mod membre_table;
 mod compte_table;
 mod view_table;
+mod page_membre;
 
 pub use progress::ProgressBar;
 pub use error_screen::*;
@@ -23,6 +24,7 @@ pub use groupe_table::*;
 pub use membre_table::*;
 pub use compte_table::*;
 pub use view_table::*;
+pub use page_membre::*;
 use ratatui::{style::Stylize, text::{Line, Text}, widgets::{Paragraph, Wrap}};
 use lazy_static::lazy_static;
 
@@ -101,3 +103,18 @@ enum ScrollMode {
 	Auto,
 	Manual(usize),
 }
+
+#[derive(Debug)]
+pub enum PageError {
+	NonmatchingIDs{msg: String},
+	MissingData{msg: String},
+}
+impl std::fmt::Display for PageError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			PageError::NonmatchingIDs { msg } => write!(f, "Non matching IDs:{}", msg),
+			PageError::MissingData { msg } => write!(f, "Missing data: {}", msg),
+		}
+	}
+}
+impl std::error::Error for PageError {}

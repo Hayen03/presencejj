@@ -164,8 +164,12 @@ impl Screen for MembreTable {
 						Ok(UpdateAction::Continue.one())
 					},
 					cte::KeyCode::Enter => {
-						// todo! select the group and show detailed view
-						Ok(UpdateAction::Continue.one())
+						if let Some(sel) = self.state.read().expect("Poisoned Lock").selected() {
+							let sel = self.data.get(sel).expect("Selection out of bounds");
+							Ok(UpdateAction::OpenMembre(sel.id).one())
+						} else {
+							Ok(UpdateAction::Continue.one())
+						}
 					},
 					cte::KeyCode::Esc => Ok(UpdateAction::Pop.one()),
 					_ => Ok(UpdateAction::Continue.one()),

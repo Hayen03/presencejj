@@ -3,7 +3,7 @@ use std::{any::Any, collections::VecDeque, fmt::Debug, path::PathBuf, sync::{Arc
 use ratatui::text::{Line, Text};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
+use crate::{cdj::{RegError, comptes::{Compte, CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeID, GroupeReg, NULL_GROUPE}, membres::{Membre, MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
 
 pub mod app;
 pub mod tui;
@@ -228,6 +228,12 @@ pub enum UpdateAction {
 	ErrorPopUp(Box<dyn std::error::Error>),
 	ErrorReplace(Box<dyn std::error::Error>),
 	Bell,
+	OpenMembre(MembreID),
+	OpenCompte(CompteID),
+	OpenGroupe(GroupeID),
+	UpdateMembre(Membre),
+	UpdateCompte(Compte),
+	UpdateGroupe(Groupe),
 }
 impl UpdateAction {
 	pub fn one(self) -> Vec<Self> {
@@ -246,6 +252,7 @@ pub trait Screen where Self: ratatui::widgets::WidgetRef + std::fmt::Debug {
 	fn background_update(&mut self, event: Event) -> Result<UpdateActions, UIError> {
 		Ok(UpdateAction::Continue.one())
 	}
+	fn on_refocus(&mut self, state: Arc<AppState>) {}
 }
 
 #[derive(Debug)]

@@ -140,6 +140,9 @@ impl CompteReg {
             Option::Some(c) => Ok(c),
         }
     }
+    pub fn update(&mut self, compte: Compte) {
+        self.reg.insert(compte.id, compte);
+    }
     pub fn search_by_name<'a>(&'a self, nom: &'a str) -> CompteIter<'a, impl Iterator<Item=&'a Compte>> {
         CompteIter(self.reg.values().filter(move |c| c.mandataire == nom))
     }

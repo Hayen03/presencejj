@@ -157,6 +157,17 @@ impl Screen for ViewTable {
 			_ => Ok(UpdateAction::Continue.one()),
 		}
 	}
+
+	fn on_refocus(&mut self, state: std::sync::Arc<crate::ui::AppState>) {
+		// update the tables with the latest data from the state
+		self.groupes.update(&state.groupes.read().expect("Poisoned Lock"));
+		self.groupes.fit_widths();
+		self.membres.update(&state.membres.read().expect("Poisoned Lock"));
+		self.membres.fit_widths();
+		self.comptes.update(&state.comptes.read().expect("Poisoned Lock"));
+		self.comptes.fit_widths();
+	}
+
 }
 
 fn stylize_selection(current: Selection, target: Selection) -> Span<'static> {

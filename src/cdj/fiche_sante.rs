@@ -32,3 +32,15 @@ pub struct Medicaments {
     pub anti_biotique: O<bool>,
     pub acetaminophene: O<bool>,
 }
+impl Medicaments {
+    pub fn ls(&self) -> String {
+        vec![
+            self.acetaminophene.and_then(|p| if p {Some("Acétaminophène".to_string())} else {None}),
+            self.anti_biotique.and_then(|p| if p {Some("Anti-biotique".to_string())} else {None}),
+            self.anti_emetique.and_then(|p| if p {Some("Anti-émétique".to_string())} else {None}),
+            self.anti_inflamatoire.and_then(|p| if p {Some("Anti-inflammatoire".to_string())} else {None}),
+            self.ibuprofene.and_then(|p| if p {Some("Ibuprofène".to_string())} else {None}),
+            self.sirop_toux.and_then(|p| if p {Some("Sirop pour la toux".to_string())} else {None}),
+        ].into_iter().flatten().collect::<Vec<_>>().join(", ")
+    }
+}

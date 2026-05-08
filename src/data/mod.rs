@@ -26,13 +26,18 @@ pub enum Genre {
     Femme,
     Autre,
 }
+impl Genre {
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Homme => "Homme",
+			Self::Femme => "Femme",
+			Self::Autre => "Autre",
+		}
+	}
+}
 impl Display for Genre {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Autre => write!(f, "Autre"),
-            Self::Homme => write!(f, "Homme"),
-            Self::Femme => write!(f, "Femme"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 impl FromStr for Genre {
@@ -59,16 +64,21 @@ pub enum Taille {
     XL,
     XXL,
 }
+impl Taille {
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::XS => "XS",
+			Self::S => "S",
+			Self::M => "M",
+			Self::L => "L",
+			Self::XL => "XL",
+			Self::XXL => "XXL",
+		}
+	}
+}
 impl Display for Taille {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::XS => write!(f, "XS"),
-            Self::S => write!(f, "S"),
-            Self::M => write!(f, "M"),
-            Self::L => write!(f, "L"),
-            Self::XL => write!(f, "XL"),
-            Self::XXL => write!(f, "XXL"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 impl FromStr for Taille {
@@ -95,6 +105,17 @@ impl Taille {
 pub struct BoolJustifie {
     pub reponse: bool,
     pub justification: O<String>,
+}
+impl std::fmt::Display for BoolJustifie {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let base = if self.reponse { "Oui" } else { "Non" };
+		let just = if let Some(j) = &self.justification {
+			format!(", {j}")
+		} else {
+			String::new()
+		};
+		write!(f, "{}{}", base, just)
+	}
 }
 
 #[derive(Debug)]

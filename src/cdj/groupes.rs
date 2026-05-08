@@ -223,6 +223,20 @@ impl Groupe {
     pub fn is_null(&self) -> bool {
         self.saison.is_none() && self.site.is_none() && self.category.is_none() && self.semaine.is_none() && self.activite.is_none()
     }
+
+    pub fn desc_for(&self, m: MembreID) -> Option<String> {
+        if self.participants.contains(&m) {
+            let base = self.short_desc();
+            let sg = if let Some(sg) = self.get_sous_groupe_for(m) {
+                format!(" {}", sg.short_desc())
+            } else {
+                String::new()
+            };
+            Some(format!("{}{}", base, sg))
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -270,6 +284,9 @@ impl GroupeReg {
             Option::None => Err(RegError::NoSuchItem(gid)),
             Option::Some(m) => Ok(m),
         }
+    }
+    pub fn update(&mut self, groupe: Groupe) {
+        self.reg.insert(groupe.id, groupe);
     }
     pub fn groupes(&self) -> GroupeIter<'_, impl Iterator<Item=&'_ Groupe>> {
         GroupeIter(self.reg.values())
@@ -427,5 +444,15 @@ pub struct SousGroupe {
 impl SousGroupe {
     fn contains(&self, mbr: &Membre) -> bool {
         self.participants.iter().any(|mid| mbr.id == *mid)
+    }
+    fn short_desc(&self) -> String {
+        let base = format!("Sous-groupe {}", self.disc);
+        let extra = match (self.profil, self.animateur.as_ref()) {
+            (Some(p), Some(a)) => format!(" (profil {p} -- {a})"),
+            (Some(p), None) => format!(" (profil {p})"),
+            (None, Some(a)) => format!(" ({a})"),
+            (None, None) => String::new(),
+        };
+        format!("{}{}", base, extra)
     }
 }

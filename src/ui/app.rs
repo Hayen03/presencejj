@@ -152,10 +152,14 @@ impl App {
 			UpdateAction::Continue => Ok(true),
 			UpdateAction::Quit => Ok(false),
 			UpdateAction::Pop => {
-				if self.sub_screen_stack.pop().is_none() {
-					return Ok(self.stack.pop().is_some()); // if we pop while nothing to pop, it means we quit the main menu, so we return false to quit the app
-				}
-				Ok(true)
+				let ret = if self.sub_screen_stack.pop().is_none() {
+					self.stack.pop().is_some() // if we pop while nothing to pop, it means we quit the main menu, so we return false to quit the app
+				} else {
+					true
+				};
+				let state = self.state.clone();
+				self.get_focused_screen_mut().on_refocus(state);
+				Ok(ret)
 			},
 			UpdateAction::Push(screen) => {
 				self.stack.push(screen);
@@ -192,7 +196,43 @@ impl App {
 				let _ = stderr.write_all(b"\x07");
 				let _ = stderr.flush();
 				Ok(true)
-			}
+			},
+			UpdateAction::OpenCompte(cid) => {
+				// todo! implement this
+				Ok(true)
+			},
+			UpdateAction::OpenGroupe(gid) => {
+				// todo! implement this
+				Ok(true)
+			},
+			UpdateAction::OpenMembre(mid) => {
+				match self.state.membres.read().expect("Poisoned Lock").get(mid) {
+					Ok(membre) => {
+						let comptes = self.state.comptes.read().expect("Poisoned Lock");
+						let groupes = self.state.groupes.read().expect("Poisoned Lock");
+						let screen = crate::ui::screens::PageMembre::try_new(membre.clone(), &comptes, &groupes)?;
+						self.stack.push(Box::new(screen));
+					},
+					Err(e) => {
+						let err_screen = ErrorScreen::from_error(Box::new(e));
+						self.sub_screen_stack.push(Box::new(err_screen));
+						return Ok(true);
+					},
+				}
+				Ok(true)
+			},
+			UpdateAction::UpdateCompte(cid) => {
+				self.state.comptes.write().expect("Poisoned Lock").update(cid);
+				Ok(true)
+			},
+			UpdateAction::UpdateGroupe(gid) => {
+				self.state.groupes.write().expect("Poisoned Lock").update(gid);
+				Ok(true)
+			},
+			UpdateAction::UpdateMembre(mid) => {
+				self.state.membres.write().expect("Poisoned Lock").update(mid);
+				Ok(true)
+			},
 		}
 	}
 
