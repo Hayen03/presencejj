@@ -1,19 +1,13 @@
 use std::sync::Arc;
 
-use ratatui::text::Text;
-
 use crate::ui::AppState;
 
-
-
 pub fn afficher_donnees(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
-	let text = Text::from("Cette fonctionnalité n'est pas encore implémentée, mais elle le sera bientôt !");
-	let title = "Attention!".into();
-	let size = {
-		let lock = state.theme.read().expect("Poisoned Lock");
-		(lock.info_box_max_width, lock.info_box_max_height)
-	};
-	let screen = crate::ui::screens::InfoScreen::new(title, text).with_size(size.0, size.1);
+	let screen = crate::ui::screens::ViewTable::from_regs(
+		&state.groupes.read().expect("Poisoned Lock"),
+		&state.membres.read().expect("Poisoned Lock"),
+		&state.comptes.read().expect("Poisoned Lock"),
+	);
 
-	Ok(crate::ui::UpdateAction::PushSub(Box::new(screen)).one())
+	Ok(crate::ui::UpdateAction::Push(Box::new(screen)).one())
 }

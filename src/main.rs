@@ -1,5 +1,5 @@
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
-
+#![feature(hash_set_entry)]
 
 use config::Config;
 

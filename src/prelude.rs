@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock, Weak};
+use std::{collections::HashSet, sync::{Arc, RwLock, Weak}};
 use chrono::NaiveDate;
 use lazy_static::lazy_static;
 
@@ -187,3 +187,13 @@ impl std::fmt::Display for ErrorMessage {
 	}
 }
 impl std::error::Error for ErrorMessage {}
+
+pub fn get_from_reg(reg: &mut HashSet<Arc<str>>, s: &str) -> Arc<str> {
+	if let Some(s) = reg.get(s) {
+		s.clone()
+	} else {
+		let arc: Arc<str> = Arc::from(s);
+		reg.insert(arc.clone());
+		arc
+	}
+}

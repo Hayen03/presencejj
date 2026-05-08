@@ -6,6 +6,10 @@ mod input_screen;
 mod menu;
 mod task_screen;
 mod text_screen;
+mod groupe_table;
+mod membre_table;
+mod compte_table;
+mod view_table;
 
 pub use progress::ProgressBar;
 pub use error_screen::*;
@@ -15,6 +19,10 @@ pub use input_screen::*;
 pub use menu::*;
 pub use task_screen::*;
 pub use text_screen::*;
+pub use groupe_table::*;
+pub use membre_table::*;
+pub use compte_table::*;
+pub use view_table::*;
 use ratatui::{style::Stylize, text::{Line, Text}, widgets::{Paragraph, Wrap}};
 use lazy_static::lazy_static;
 

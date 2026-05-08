@@ -18,6 +18,12 @@ pub fn line_width(line: &Line) -> usize {
 pub fn str_width(s: &str) -> usize {
 	s.graphemes(true).count()
 }
+pub fn fit_str_width<'a>(strs: impl Iterator<Item = &'a str>) -> usize {
+	strs.map(str_width).max().unwrap_or(0)
+}
+pub fn fit_line_width<'a, 'b: 'a>(lines: impl Iterator<Item = &'a Line<'b>>) -> usize {
+	lines.map(line_width).max().unwrap_or(0)
+}
 
 #[derive(Debug)]
 pub enum TextInputError {
