@@ -58,6 +58,7 @@ struct ViewGeneral {
 	cluster: FieldBlockCluster,
 	sel: Option<usize>,
 	scroll: Cell<u16>,
+	//cid: Option<CompteID>,
 }
 impl WidgetRef for ViewGeneral {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
@@ -91,6 +92,17 @@ impl Screen for ViewGeneral {
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
 							let field = self.ordre[sel].clone();
+
+							/*
+							// check if it's the compte mandataire for special behaviour
+							if let Some(cid) = self.cid {
+								// open the compte view for the mandataire
+								if Arc::ptr_eq(&field, &self.mandataire) {
+									return Ok(UpdateAction::OpenCompte(cid).one());
+								}
+							}
+							*/
+
 							Ok(Field::on_action(field, None))
 						} else {
 							Ok(UpdateAction::Continue.one())
@@ -105,6 +117,8 @@ impl Screen for ViewGeneral {
 }
 impl ViewGeneral {
 	fn try_new(membre: &Membre, _compte: Option<&Compte>, _groupes: &[GroupeLine]) -> Result<Self, UIError> {
+		let cid = _compte.map(|c| c.id);
+
 		let mut block_intro = FieldBlock::default();
 		let naissance = block_intro.add_field(Field::from(membre.naissance)
 			.with_label("Naissance".into()));
@@ -122,10 +136,10 @@ impl ViewGeneral {
 		let mut block_compte = FieldBlock::default();
 		let (mandataire, email, tel, adresse) = if let Some(compte) = _compte {
 			(
-				block_compte.add_field(Field::from(compte.mandataire.as_str()).with_label("Mandataire".into()).set_editable(false)),
-				block_compte.add_field(Field::from(compte.email.clone()).with_label("Email".into())),
-				block_compte.add_field(Field::from(compte.tel).with_label("Téléphone".into())),
-				block_compte.add_field(Field::from(compte.adresse.clone()).with_label("Adresse".into())),
+				block_compte.add_field(Field::from(compte.mandataire.as_str()).with_label("Mandataire".into()).set_editable(false).with_associated_page(super::AssociatedPage::Compte { cid: compte.id })),
+				block_compte.add_field(Field::from(compte.email.clone()).with_label("Email".into()).with_associated_page(super::AssociatedPage::Compte { cid: compte.id })),
+				block_compte.add_field(Field::from(compte.tel).with_label("Téléphone".into()).with_associated_page(super::AssociatedPage::Compte { cid: compte.id })),
+				block_compte.add_field(Field::from(compte.adresse.clone()).with_label("Adresse".into()).with_associated_page(super::AssociatedPage::Compte { cid: compte.id })),
 			)
 		} else {
 			(
@@ -153,27 +167,50 @@ impl ViewGeneral {
 			block_interets.add_field(Field::from(membre.interets[3]).with_label("Interet 4".into())),
 		];
 
-		let cluster = FieldBlockCluster::new(vec![block_intro, block_compte, block_contacts, block_depart, block_interets]);
-		let ordre = vec![
-			naissance.clone(),
-			genre.clone(),
-			accompagnement.clone(),
-			auth_photo.clone(),
-			taille.clone(),
-			commentaire.clone(),
-			mandataire.clone(),
-			email.clone(),
-			tel.clone(),
-			adresse.clone(),
-			contact_1.clone(),
-			contact_2.clone(),
-			quitte_avec.clone(),
-			mdp.clone(),
-			interets[0].clone(),
-			interets[1].clone(),
-			interets[2].clone(),
-			interets[3].clone(),
-		];
+		let cluster = if cid.is_some() { // on ne montre pas le compte s'il n'y en a pas, pour éviter de faire croire à l'utilisateur qu'il peut en ajouter un
+			FieldBlockCluster::new(vec![block_intro, block_compte, block_contacts, block_depart, block_interets])
+		} else {
+			FieldBlockCluster::new(vec![block_intro, block_contacts, block_depart, block_interets])
+		};
+		let ordre = if cid.is_some() {
+			vec![
+				naissance.clone(),
+				genre.clone(),
+				accompagnement.clone(),
+				auth_photo.clone(),
+				taille.clone(),
+				commentaire.clone(),
+				mandataire.clone(),
+				email.clone(),
+				tel.clone(),
+				adresse.clone(),
+				contact_1.clone(),
+				contact_2.clone(),
+				quitte_avec.clone(),
+				mdp.clone(),
+				interets[0].clone(),
+				interets[1].clone(),
+				interets[2].clone(),
+				interets[3].clone(),
+			]
+		} else {
+			vec![
+				naissance.clone(),
+				genre.clone(),
+				accompagnement.clone(),
+				auth_photo.clone(),
+				taille.clone(),
+				commentaire.clone(),
+				contact_1.clone(),
+				contact_2.clone(),
+				quitte_avec.clone(),
+				mdp.clone(),
+				interets[0].clone(),
+				interets[1].clone(),
+				interets[2].clone(),
+				interets[3].clone(),
+			]
+		};
 		Ok(Self {
 			naissance,
 			genre,
@@ -194,9 +231,36 @@ impl ViewGeneral {
 			cluster,
 			sel: None,
 			scroll: Cell::new(0),
+			//cid,
 		})
 	}
-	fn update(&mut self, _membre: &Membre, compte: Option<&Compte>) {}
+	fn update(&mut self, membre: &Membre, compte: Option<&Compte>) {
+		self.naissance.write().expect("Poisoned Lock").set_value(FieldType::from(membre.naissance));
+		self.genre.write().expect("Poisoned Lock").set_value(FieldType::from(membre.genre));
+		self.accompagnement.write().expect("Poisoned Lock").set_value(FieldType::from(membre.accompagnement));
+		self.auth_photo.write().expect("Poisoned Lock").set_value(FieldType::from(membre.auth_photo));
+		self.taille.write().expect("Poisoned Lock").set_value(FieldType::from(membre.taille));
+		self.commentaire.write().expect("Poisoned Lock").set_value(FieldType::from(membre.commentaire.as_deref()));
+		for (i, interet) in membre.interets.iter().enumerate() {
+			self.interets[i].write().expect("Poisoned Lock").set_value(FieldType::from(*interet));
+		}
+		if let Some(compte) = compte {
+			self.mandataire.write().expect("Poisoned Lock").set_value(FieldType::from(compte.mandataire.as_str()));
+			self.email.write().expect("Poisoned Lock").set_value(FieldType::from(compte.email.clone()));
+			self.tel.write().expect("Poisoned Lock").set_value(FieldType::from(compte.tel));
+			self.adresse.write().expect("Poisoned Lock").set_value(FieldType::Adresse(compte.adresse.clone().unwrap_or_default()));
+		} else {
+			self.mandataire.write().expect("Poisoned Lock").set_value(FieldType::Str(None));
+			self.email.write().expect("Poisoned Lock").set_value(FieldType::Email(None));
+			self.tel.write().expect("Poisoned Lock").set_value(FieldType::Tel(None));
+			self.adresse.write().expect("Poisoned Lock").set_value(FieldType::Adresse(Adresse::default()));
+		}
+		self.contact_1.write().expect("Poisoned Lock").set_value(FieldType::from(membre.contacts[0].clone()));
+		self.contact_2.write().expect("Poisoned Lock").set_value(FieldType::from(membre.contacts[1].clone()));
+		let quitte_avec = membre.quitte.avec.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
+		self.quitte_avec.write().expect("Poisoned Lock").set_value(FieldType::from(quitte_avec.as_str()));
+		self.mdp.write().expect("Poisoned Lock").set_value(FieldType::from(membre.quitte.mdp.as_deref()));
+	}
 	fn build_membre(&self, membre: &mut Membre, compte: &mut Option<&mut Compte>) {
 		membre.naissance = self.naissance.read().expect("Poisoned Lock").get_date().flatten().copied().unwrap_or(membre.naissance);
 		membre.genre = self.genre.read().expect("Poisoned Lock").get_genre().flatten().copied();
@@ -356,7 +420,25 @@ impl ViewFicheSante {
 			scroll: Cell::new(0),
 		})
 	}
-	fn update(&mut self, _membre: &Membre) {}
+	fn update(&mut self, membre: &Membre) {
+		let allergies = membre.fiche_sante.allergies.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
+		self.allergies.write().expect("Poisoned Lock").set_value(FieldType::from(allergies.as_str()));
+		let maladies = membre.fiche_sante.maladies.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
+		self.maladies.write().expect("Poisoned Lock").set_value(FieldType::from(maladies.as_str()));
+		self.auth_soins.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_soins));
+		self.probleme_comportement.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.probleme_comportement.clone()));
+		self.cam.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.cam));
+		self.medicaments.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.prise_med.clone()));
+		self.auth_medicament_acetaminophene.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.acetaminophene));
+		self.auth_medicament_anti_biotique.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.anti_biotique));
+		self.auth_medicament_anti_emetique.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.anti_emetique));
+		self.auth_medicament_anti_inflamatoire.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.anti_inflamatoire));
+		self.auth_medicament_ibuprofene.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.ibuprofene));
+		self.auth_medicament_sirop_toux.write().expect("Poisoned Lock").set_value(FieldType::from(membre.fiche_sante.auth_medicaments.sirop_toux));
+		self.partage_sauveteur.write().expect("Poisoned Lock").set_value(FieldType::from(membre.piscine.partage));
+		self.vfi.write().expect("Poisoned Lock").set_value(FieldType::from(membre.piscine.vfi));
+		self.tete_sous_eau.write().expect("Poisoned Lock").set_value(FieldType::from(membre.piscine.tete_sous_eau));
+	}
 	fn build_membre(&self, membre: &mut Membre, _compte: &mut Option<&mut Compte>) {
 		membre.fiche_sante.allergies = self.allergies.read().expect("Poisoned Lock").get_str().flatten().map(|s| s.split(',').map(str::trim).map(str::to_string).collect()).unwrap_or(membre.fiche_sante.allergies.clone());
 		membre.fiche_sante.maladies = self.maladies.read().expect("Poisoned Lock").get_str().flatten().map(|s| s.split(',').map(str::trim).map(str::to_string).collect()).unwrap_or(membre.fiche_sante.maladies.clone());
@@ -461,7 +543,7 @@ impl Screen for ViewGroupes {
 								MenuItem {id: "Voir le groupe", action: Box::new(move |state| {
 									Ok(vec![
 										UpdateAction::Pop,
-										UpdateAction::OpenGroupe(g.id),
+										UpdateAction::OpenGroupe(g.id, g._sg),
 									])
 								})},
 								MenuItem {id: "Changer le membre de sous-groupe", action: Box::new(move |state| {

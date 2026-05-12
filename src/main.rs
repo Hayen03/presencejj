@@ -1,6 +1,4 @@
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
-#![feature(hash_set_entry)]
-
 use config::Config;
 
 use crate::{cdj::{RegError, comptes::{CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{GroupeID, GroupeReg, NULL_GROUPE}, membres::{MembreID, MembreReg, NULL_MEMBRE}}, cli::{ProgramActions, ProgramData, YesNo, choose_option, print_banner, wait_to_continue}, ui::{TextInputError, UIError, app::App, event::EventError, tui::{Tui, TuiError}}};

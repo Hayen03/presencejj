@@ -370,7 +370,7 @@ pub fn mk_sous_groupe(membres: &[&Membre], nb_participants: usize) -> SousGroupe
     match profil {
         None => {
             let mut parts = Vec::from(membres);
-            parts.sort_by(|a, b| a.naissance.cmp(&b.naissance));
+            parts.sort_by_key(|a| a.naissance);
             for p in parts.iter().take(min(nb_participants, parts.len())) {
                 part.insert(p.id);
             }

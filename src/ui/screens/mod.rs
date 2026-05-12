@@ -131,15 +131,15 @@ impl std::fmt::Display for PageError {
 }
 impl std::error::Error for PageError {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AssociatedPage {
 	Membre{mid: MembreID},
 	Compte{cid: CompteID},
-	Groupe{gid: GroupeID, sg: Option<usize>},
+	Groupe{gid: GroupeID, sg: Option<u32>},
 }
 
-#[derive(Debug)]
-enum FieldType {
+#[derive(Debug, Clone)]
+pub enum FieldType {
 	Str(Option<String>),
 	Bool(Option<bool>),
 	Int(Option<i32>),
@@ -421,6 +421,28 @@ impl Field {
 		}
 	}
 
+	pub fn is_some(&self) -> bool {
+		match &self.value {
+			FieldType::Str(s) => s.is_some(),
+			FieldType::Bool(b) => b.is_some(),
+			FieldType::Int(i) => i.is_some(),
+			FieldType::Email(e) => e.is_some(),
+			FieldType::Adresse(a) => true,
+			FieldType::Tel(t) => t.is_some(),
+			FieldType::BoolJustify(bj) => bj.is_some(),
+			FieldType::Cam(cam) => cam.is_some(),
+			FieldType::Date(d) => d.is_some(),
+			FieldType::Genre(g) => g.is_some(),
+			FieldType::Taille(t) => t.is_some(),
+			FieldType::Interet(i) => i.is_some(),
+			FieldType::Contact(c) => c.is_some(),
+		}
+	}
+
+	pub fn set_value(&mut self, value: FieldType) {
+		self.value = value;
+	}
+
 	pub fn value_to_string(&self) -> String {
 		match &self.value {
 			FieldType::Str(Some(s)) => s.clone(),
@@ -471,209 +493,38 @@ impl Field {
 	}
 
 	pub fn on_action(this: Arc<RwLock<Self>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> UpdateActions {
-		let field_hook = this.clone();
-		let title = this.read().expect("Poisoned Lock").label.clone();
-		let lock = this.read().expect("Poisoned Lock");
-		if !lock.editable {
-			return UpdateAction::Continue.one();
-		}
-		match &lock.value {
-			FieldType::Str(s) => {
-				let mut input_screen = LineInputScreen::default()
-					.with_value(s.clone().unwrap_or_default())
-					.with_after(Box::new(move |input, state| {
-						if let Some(input) = input {
-							let val = input.trim().to_string();
-							let val = if val.is_empty() {
-								None
-							} else {
-								Some(val)
-							};
-							let mut lock = field_hook.write().expect("Poisoned Lock");
-							lock.value = FieldType::Str(val);
-							if let Some(dirty_flag) = &dirty_flag {
-								*dirty_flag.lock().expect("Poisoned Lock") = true;
-							}
+		let editable = this.read().expect("Poisoned Lock").editable;
+		let associated_page = this.read().expect("Poisoned Lock").associated_page;
+		match (editable, associated_page) {
+			(true, Some(page)) => { // give choice to edit or open page
+				let menu = Menu::new(Box::new([
+					MenuItem {id: "Editer", action: Box::new(move |state| {
+						let mut actions = mk_action(this.clone(), dirty_flag.clone());
+						actions.insert(0, UpdateAction::Pop);
+						Ok(actions)
+					}) },
+					MenuItem {id: "Voir", action: Box::new(move |state| {
+						match page {
+							AssociatedPage::Membre { mid } => Ok(UpdateAction::OpenMembre(mid).one()),
+							AssociatedPage::Compte { cid } => Ok(UpdateAction::OpenCompte(cid).one()),
+							AssociatedPage::Groupe { gid, sg } => Ok(UpdateAction::OpenGroupe(gid, sg).one()),
 						}
-						Ok(UpdateAction::Pop.one())
-					}));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Bool(b) => {
-				let mut screen = Menu::new(Box::new([
-					MenuItem {id: OuiNon::Oui, action: mk_menu_action(OuiNon::Oui, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: OuiNon::Non, action: mk_menu_action(OuiNon::Non, field_hook.clone(), dirty_flag.clone())},
+					})},
 				]));
-				if let Some(title) = title {
-					screen = screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(screen)).one()
+				UpdateAction::PushSub(Box::new(menu)).one()
 			},
-			FieldType::Int(i) => {
-				let mut input_screen = LineInputScreen::default()
-					.with_value(i.map(|i| i.to_string()).unwrap_or_default())
-					.with_validation(Arc::new(|s| s.trim().parse::<u32>().is_ok()))
-					.with_after(Box::new(move |input, state| {
-						if let Some(input) = input {
-							let mut lock = field_hook.write().expect("Poisoned Lock");
-							if input.trim().is_empty() {
-								lock.value = FieldType::Int(None);
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else if let Ok(val) = input.trim().parse::<i32>() {
-								lock.value = FieldType::Int(Some(val));
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else {
-								return Ok(UpdateAction::Bell.one());
-							}
-						}
-						Ok(UpdateAction::Pop.one())
-					}));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
+			(true, None) => mk_action(this, dirty_flag),
+			(false, Some(page)) => { // just open page
+				vec![
+					UpdateAction::Pop,
+					match page {
+						AssociatedPage::Membre { mid } => UpdateAction::OpenMembre(mid),
+						AssociatedPage::Compte { cid } => UpdateAction::OpenCompte(cid),
+						AssociatedPage::Groupe { gid, sg } => UpdateAction::OpenGroupe(gid, sg),
+					},
+				]
 			},
-			FieldType::Email(e) => {
-				let mut input_screen = LineInputScreen::default()
-					.with_value(e.clone().map(|e| e.to_string()).unwrap_or_default())
-					.with_validation(Arc::new(|s| s.trim().parse::<Email>().is_ok()))
-					.with_after(Box::new(move |input, state| {
-						if let Some(input) = input {
-							let input = input.trim();
-							let mut lock = field_hook.write().expect("Poisoned Lock");
-							if input.is_empty() {
-								lock.value = FieldType::Email(None);
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else if let Ok(val) = input.trim().parse::<Email>() {
-								lock.value = FieldType::Email(Some(val));
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else {
-								return Ok(UpdateAction::Bell.one());
-							}
-						}
-						Ok(UpdateAction::Pop.one())
-					}));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Adresse(a) => UpdateAction::Continue.one(),
-			FieldType::Tel(t) => {
-				let mut input_screen = LineInputScreen::default()
-					.with_value(t.map(|t| t.to_string()).unwrap_or_default())
-					.with_validation(Arc::new(|s| s.trim().parse::<Tel>().is_ok()))
-					.with_message(Text::from("123-456-7890"))
-					.with_after(Box::new(move |input, state| {
-						if let Some(input) = input {
-							let input = input.trim();
-							let mut lock = field_hook.write().expect("Poisoned Lock");
-							if input.is_empty() {
-								lock.value = FieldType::Tel(None);
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else if let Ok(val) = input.parse::<Tel>() {
-								lock.value = FieldType::Tel(Some(val));
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else {
-								return Ok(UpdateAction::Bell.one());
-							}
-						}
-						Ok(UpdateAction::Pop.one())
-					}));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::BoolJustify(bj) => UpdateAction::Continue.one(),
-			FieldType::Cam(cam) => UpdateAction::Continue.one(),
-			FieldType::Date(d) => {
-				let mut input_screen = LineInputScreen::default()
-					.with_value(d.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default())
-					.with_validation(Arc::new(|s| s.trim().parse::<Date>().is_ok()))
-					.with_message(Text::from("AAAA-mm-jj"))
-					.with_after(Box::new(move |input, state| {
-						if let Some(input) = input {
-							let input = input.trim();
-							let mut lock = field_hook.write().expect("Poisoned Lock");
-							if input.is_empty() {
-								lock.value = FieldType::Date(None);
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else if let Ok(val) = input.trim().parse::<Date>() {
-								lock.value = FieldType::Date(Some(val));
-								if let Some(dirty_flag) = &dirty_flag {
-									*dirty_flag.lock().expect("Poisoned Lock") = true;
-								}
-							} else {
-								return Ok(UpdateAction::Bell.one());
-							}
-						}
-						Ok(UpdateAction::Pop.one())
-					}));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Genre(g) => {
-
-				let mut input_screen = Menu::new(Box::new([
-					MenuItem {id: Genre::Homme, action: mk_menu_action(Genre::Homme, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Genre::Femme, action: mk_menu_action(Genre::Femme, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Genre::Autre, action: mk_menu_action(Genre::Autre, field_hook.clone(), dirty_flag.clone())},
-				]));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Taille(t) => {
-				
-				let mut input_screen = Menu::new(Box::new([
-					MenuItem {id: Taille::XS, action: mk_menu_action(Taille::XS, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Taille::S, action: mk_menu_action(Taille::S, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Taille::M, action: mk_menu_action(Taille::M, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Taille::L, action: mk_menu_action(Taille::L, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Taille::XL, action: mk_menu_action(Taille::XL, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Taille::XXL, action: mk_menu_action(Taille::XXL, field_hook.clone(), dirty_flag.clone())},
-				]));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Interet(i) => {
-				let mut input_screen = Menu::new(Box::new([
-					MenuItem {id: Interet::Art, action: mk_menu_action(Interet::Art, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Interet::Nature, action: mk_menu_action(Interet::Nature, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Interet::Science, action: mk_menu_action(Interet::Science, field_hook.clone(), dirty_flag.clone())},
-					MenuItem {id: Interet::Sport, action: mk_menu_action(Interet::Sport, field_hook.clone(), dirty_flag.clone())},
-				]));
-				if let Some(title) = title {
-					input_screen = input_screen.with_title(title);
-				};
-				UpdateAction::PushSub(Box::new(input_screen)).one()
-			},
-			FieldType::Contact(c) => {
-				UpdateAction::Continue.one()
-			},
+			(false, None) => UpdateAction::Continue.one(),
 		}
 	}
 }
@@ -798,4 +649,208 @@ where T: Into<FieldType> + Clone + 'static {
 		}
 		Ok(UpdateAction::Pop.one())
 	})
+}
+
+fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> Vec<UpdateAction> {
+	let field_hook = this.clone();
+	let title = this.read().expect("Poisoned Lock").label.clone();
+	let lock = this.read().expect("Poisoned Lock");
+	match &lock.value {
+		FieldType::Str(s) => {
+			let mut input_screen = LineInputScreen::default()
+				.with_value(s.clone().unwrap_or_default())
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let val = input.trim().to_string();
+						let val = if val.is_empty() {
+							None
+						} else {
+							Some(val)
+						};
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						lock.value = FieldType::Str(val);
+						if let Some(dirty_flag) = &dirty_flag {
+							*dirty_flag.lock().expect("Poisoned Lock") = true;
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Bool(b) => {
+			let mut screen = Menu::new(Box::new([
+				MenuItem {id: OuiNon::Oui, action: mk_menu_action(OuiNon::Oui, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: OuiNon::Non, action: mk_menu_action(OuiNon::Non, field_hook.clone(), dirty_flag.clone())},
+			]));
+			if let Some(title) = title {
+				screen = screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(screen)).one()
+		},
+		FieldType::Int(i) => {
+			let mut input_screen = LineInputScreen::default()
+				.with_value(i.map(|i| i.to_string()).unwrap_or_default())
+				.with_validation(Arc::new(|s| s.trim().parse::<u32>().is_ok()))
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						if input.trim().is_empty() {
+							lock.value = FieldType::Int(None);
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else if let Ok(val) = input.trim().parse::<i32>() {
+							lock.value = FieldType::Int(Some(val));
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else {
+							return Ok(UpdateAction::Bell.one());
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Email(e) => {
+			let mut input_screen = LineInputScreen::default()
+				.with_value(e.clone().map(|e| e.to_string()).unwrap_or_default())
+				.with_validation(Arc::new(|s| s.trim().parse::<Email>().is_ok()))
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let input = input.trim();
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						if input.is_empty() {
+							lock.value = FieldType::Email(None);
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else if let Ok(val) = input.trim().parse::<Email>() {
+							lock.value = FieldType::Email(Some(val));
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else {
+							return Ok(UpdateAction::Bell.one());
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Adresse(a) => UpdateAction::Continue.one(),
+		FieldType::Tel(t) => {
+			let mut input_screen = LineInputScreen::default()
+				.with_value(t.map(|t| t.to_string()).unwrap_or_default())
+				.with_validation(Arc::new(|s| s.trim().parse::<Tel>().is_ok()))
+				.with_message(Text::from("123-456-7890"))
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let input = input.trim();
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						if input.is_empty() {
+							lock.value = FieldType::Tel(None);
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else if let Ok(val) = input.parse::<Tel>() {
+							lock.value = FieldType::Tel(Some(val));
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else {
+							return Ok(UpdateAction::Bell.one());
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::BoolJustify(bj) => UpdateAction::Continue.one(),
+		FieldType::Cam(cam) => UpdateAction::Continue.one(),
+		FieldType::Date(d) => {
+			let mut input_screen = LineInputScreen::default()
+				.with_value(d.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default())
+				.with_validation(Arc::new(|s| s.trim().parse::<Date>().is_ok()))
+				.with_message(Text::from("AAAA-mm-jj"))
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let input = input.trim();
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						if input.is_empty() {
+							lock.value = FieldType::Date(None);
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else if let Ok(val) = input.trim().parse::<Date>() {
+							lock.value = FieldType::Date(Some(val));
+							if let Some(dirty_flag) = &dirty_flag {
+								*dirty_flag.lock().expect("Poisoned Lock") = true;
+							}
+						} else {
+							return Ok(UpdateAction::Bell.one());
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Genre(g) => {
+
+			let mut input_screen = Menu::new(Box::new([
+				MenuItem {id: Genre::Homme, action: mk_menu_action(Genre::Homme, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Genre::Femme, action: mk_menu_action(Genre::Femme, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Genre::Autre, action: mk_menu_action(Genre::Autre, field_hook.clone(), dirty_flag.clone())},
+			]));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Taille(t) => {
+			
+			let mut input_screen = Menu::new(Box::new([
+				MenuItem {id: Taille::XS, action: mk_menu_action(Taille::XS, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::S, action: mk_menu_action(Taille::S, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::M, action: mk_menu_action(Taille::M, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::L, action: mk_menu_action(Taille::L, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::XL, action: mk_menu_action(Taille::XL, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::XXL, action: mk_menu_action(Taille::XXL, field_hook.clone(), dirty_flag.clone())},
+			]));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Interet(i) => {
+			let mut input_screen = Menu::new(Box::new([
+				MenuItem {id: Interet::Art, action: mk_menu_action(Interet::Art, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Nature, action: mk_menu_action(Interet::Nature, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Science, action: mk_menu_action(Interet::Science, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Sport, action: mk_menu_action(Interet::Sport, field_hook.clone(), dirty_flag.clone())},
+			]));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
+		FieldType::Contact(c) => {
+			UpdateAction::Continue.one()
+		},
+	}
 }

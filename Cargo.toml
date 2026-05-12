@@ -21,7 +21,7 @@ dialoguer = "0.12.0"
 tempfile = "3.27"
 strum = "0.28"
 strum_macros = "0.28"
-rust_xlsxwriter = "0.94.1"
+rust_xlsxwriter = "0.95.0"
 ratatui = {version="0.30.*", features=["unstable-widget-ref", "unstable-rendered-line-info"]} # 0.30.0
 crossterm = "0.29"
 color-eyre = "0.6"

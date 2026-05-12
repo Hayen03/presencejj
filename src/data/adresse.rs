@@ -158,7 +158,7 @@ impl Borrow<str> for Pays {
 }
 impl Display for Pays {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", &self.ptr)
+		write!(f, "{}", self.ptr)
 	}
 }
 impl From<&str> for Pays {
@@ -221,7 +221,7 @@ impl Borrow<str> for Province {
 }
 impl Display for Province {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", &self.ptr)
+		write!(f, "{}", self.ptr)
 	}
 }
 impl From<&str> for Province {
@@ -280,7 +280,7 @@ impl Borrow<str> for Ville {
 }
 impl Display for Ville {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", &self.ptr)
+		write!(f, "{}", self.ptr)
 	}
 }
 impl From<&str> for Ville {
@@ -499,7 +499,7 @@ impl fmt::Display for CodePostal {
 }
 impl Default for CodePostal {
 	fn default() -> Self {
-		CodePostal([b'A', b'0', b'A', b'0', b'A', b'0'])
+		CodePostal(*b"A0A0A0")
 	}
 }
 /*

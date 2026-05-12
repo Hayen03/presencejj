@@ -522,13 +522,10 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut Text
 				},
 			}
 		},
-		crate::ui::event::Event::Tick => {
-			if current_progress != previous_progress {
+		crate::ui::event::Event::Tick
+			if current_progress != previous_progress => {
 				Ok(UpdateAction::Redraw.one())
-			} else {
-				Ok(UpdateAction::Continue.one())
-			}
-		},
+			},
 		_ => {
 			Ok(UpdateAction::Continue.one())
 		},

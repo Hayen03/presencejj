@@ -230,7 +230,7 @@ pub enum UpdateAction {
 	Bell,
 	OpenMembre(MembreID),
 	OpenCompte(CompteID),
-	OpenGroupe(GroupeID),
+	OpenGroupe(GroupeID, Option<u32>),
 	UpdateMembre(Membre),
 	UpdateCompte(Compte),
 	UpdateGroupe(Groupe),

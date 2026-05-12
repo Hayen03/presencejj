@@ -21,7 +21,7 @@ impl ChandailCalcul {
     }
     fn total(&self) -> usize {
         let mut tot = 0;
-        for (_, c) in self.comptes.iter() {
+        for c in self.comptes.values() {
             tot += c;
         }
         tot

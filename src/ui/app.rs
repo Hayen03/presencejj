@@ -215,7 +215,7 @@ impl App {
 				self.redraw_requested = true;
 				Ok(true)
 			},
-			UpdateAction::OpenGroupe(gid) => {
+			UpdateAction::OpenGroupe(gid, sg) => {
 				// todo! implement this
 				self.redraw_requested = true;
 				Ok(true)

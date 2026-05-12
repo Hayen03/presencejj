@@ -174,9 +174,9 @@ impl Screen for ChandailScreen {
 							Ok(crate::ui::UpdateAction::Pop.one())
 						}
 					},
-					cte::KeyCode::Enter => {
+					cte::KeyCode::Enter
 						// only exit if the results are in
-						if self.results.is_some() {
+						if self.results.is_some() => {
 							// set the cancel flag and join the thread just to make sure
 							*self.cancel_hook.lock().expect("Poisoned Lock") = true;
 							if let Some(handle) = self.thread_handle.take() {
@@ -192,10 +192,7 @@ impl Screen for ChandailScreen {
 							} else {
 								Ok(crate::ui::UpdateAction::Pop.one())
 							}
-						} else {
-							Ok(crate::ui::UpdateAction::Continue.one())
-						}
-					},
+						},
 					_ => {
 						Ok(crate::ui::UpdateAction::Continue.one())
 					},
