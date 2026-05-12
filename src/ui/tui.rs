@@ -1,6 +1,4 @@
-use std::io::{self};
 
-use crossterm::{event::DisableMouseCapture, execute, terminal::{self, LeaveAlternateScreen}};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 
 pub type CrosstermTerminal = Terminal<CrosstermBackend<std::io::Stdout>>;
@@ -49,11 +47,13 @@ impl Tui {
 		let events = EventHandler::new(250);
 		Ok(Self { terminal, events })
 	}
+	/*
 	pub fn reset() -> Result<(), TuiError> {
 		terminal::disable_raw_mode()?;
 		execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
 		Ok(())
 	}
+	*/
 	pub fn exit(&mut self) -> Result<(), TuiError> {
 		// end the event loop
 		self.events.end();
