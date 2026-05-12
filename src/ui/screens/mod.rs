@@ -34,7 +34,7 @@ pub use page_groupe::*;
 use ratatui::{style::{Color, Stylize}, text::{Line, Span, Text}, widgets::{Paragraph, Wrap}};
 use lazy_static::lazy_static;
 
-use crate::{cdj::{comptes::CompteID, groupes::GroupeID, membres::{Contact, Interet, MembreID}}, data::{BoolJustifie, Genre, Taille, adresse::Adresse, cam::CAM, email::Email, tel::Tel}, prelude::{Date, OuiNon}, ui::{UpdateAction, actions::UpdateActions}};
+use crate::{cdj::{comptes::CompteID, groupes::GroupeID, membres::{Contact, Interet, MembreID}}, data::{BoolJustifie, Genre, Taille, adresse::Adresse, cam::CAM, email::Email, tel::Tel}, prelude::{AsStr, Date, OuiNon}, ui::{UpdateAction, actions::UpdateActions}};
 
 lazy_static!{
 	pub static ref ENTER_INSTRUCTIONS: Line<'static> = Line::from(vec![
@@ -686,8 +686,9 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 		},
 		FieldType::Bool(b) => {
 			let mut screen = Menu::new(Box::new([
-				MenuItem {id: OuiNon::Oui, action: mk_menu_action(OuiNon::Oui, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: OuiNon::Non, action: mk_menu_action(OuiNon::Non, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: OuiNon::Oui.as_str(), action: mk_menu_action(Some(OuiNon::Oui), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: OuiNon::Non.as_str(), action: mk_menu_action(Some(OuiNon::Non), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: "Aucun", action: mk_menu_action(None::<OuiNon>, field_hook.clone(), dirty_flag.clone())},
 			]));
 			if let Some(title) = title {
 				screen = screen.with_title(title);
@@ -817,9 +818,10 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 		FieldType::Genre(g) => {
 
 			let mut input_screen = Menu::new(Box::new([
-				MenuItem {id: Genre::Homme, action: mk_menu_action(Genre::Homme, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Genre::Femme, action: mk_menu_action(Genre::Femme, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Genre::Autre, action: mk_menu_action(Genre::Autre, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Genre::Homme.as_str(), action: mk_menu_action(Some(Genre::Homme), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Genre::Femme.as_str(), action: mk_menu_action(Some(Genre::Femme), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Genre::Autre.as_str(), action: mk_menu_action(Some(Genre::Autre), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: "Aucun", action: mk_menu_action(None::<Genre>, field_hook.clone(), dirty_flag.clone())},
 			]));
 			if let Some(title) = title {
 				input_screen = input_screen.with_title(title);
@@ -829,12 +831,13 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 		FieldType::Taille(t) => {
 			
 			let mut input_screen = Menu::new(Box::new([
-				MenuItem {id: Taille::XS, action: mk_menu_action(Taille::XS, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Taille::S, action: mk_menu_action(Taille::S, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Taille::M, action: mk_menu_action(Taille::M, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Taille::L, action: mk_menu_action(Taille::L, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Taille::XL, action: mk_menu_action(Taille::XL, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Taille::XXL, action: mk_menu_action(Taille::XXL, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::XS.as_str(), action: mk_menu_action(Some(Taille::XS), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::S.as_str(), action: mk_menu_action(Some(Taille::S), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::M.as_str(), action: mk_menu_action(Some(Taille::M), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::L.as_str(), action: mk_menu_action(Some(Taille::L), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::XL.as_str(), action: mk_menu_action(Some(Taille::XL), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Taille::XXL.as_str(), action: mk_menu_action(Some(Taille::XXL), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: "Aucun", action: mk_menu_action(None::<Taille>, field_hook.clone(), dirty_flag.clone())},
 			]));
 			if let Some(title) = title {
 				input_screen = input_screen.with_title(title);
@@ -843,10 +846,11 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 		},
 		FieldType::Interet(i) => {
 			let mut input_screen = Menu::new(Box::new([
-				MenuItem {id: Interet::Art, action: mk_menu_action(Interet::Art, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Interet::Nature, action: mk_menu_action(Interet::Nature, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Interet::Science, action: mk_menu_action(Interet::Science, field_hook.clone(), dirty_flag.clone())},
-				MenuItem {id: Interet::Sport, action: mk_menu_action(Interet::Sport, field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Art.as_str(), action: mk_menu_action(Some(Interet::Art), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Nature.as_str(), action: mk_menu_action(Some(Interet::Nature), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Science.as_str(), action: mk_menu_action(Some(Interet::Science), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: Interet::Sport.as_str(), action: mk_menu_action(Some(Interet::Sport), field_hook.clone(), dirty_flag.clone())},
+				MenuItem {id: "Aucun", action: mk_menu_action(None::<Interet>, field_hook.clone(), dirty_flag.clone())},
 			]));
 			if let Some(title) = title {
 				input_screen = input_screen.with_title(title);
