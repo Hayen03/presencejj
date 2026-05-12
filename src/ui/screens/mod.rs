@@ -12,6 +12,7 @@ mod compte_table;
 mod view_table;
 mod page_membre;
 mod page_compte;
+mod page_groupe;
 
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -29,6 +30,7 @@ pub use compte_table::*;
 pub use view_table::*;
 pub use page_membre::*;
 pub use page_compte::*;
+pub use page_groupe::*;
 use ratatui::{style::{Color, Stylize}, text::{Line, Span, Text}, widgets::{Paragraph, Wrap}};
 use lazy_static::lazy_static;
 

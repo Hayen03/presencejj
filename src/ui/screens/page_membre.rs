@@ -550,8 +550,10 @@ impl Screen for ViewGroupes {
 }
 impl ViewGroupes {
 	fn try_new(_membre: &Membre, _compte: Option<&Compte>, groupes: &[GroupeLine]) -> Result<Self, UIError> {
+		let mut groupes = groupes.to_vec();
+		groupes.sort_by(|g1, g2| g1.key.cmp(&g2.key));
 		Ok(Self {
-			groupes: groupes.to_vec(),
+			groupes,
 			table_state: RwLock::new(TableState::default()),
 			widths: [Constraint::default(); 8],
 			_mid: _membre.id,

@@ -22,11 +22,11 @@ lazy_static!{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GroupeKey {
     pub saison: O<String>,
+    pub activite: O<String>,
     pub site: O<String>,
     pub category: O<String>,
-    pub discriminant: O<String>,
     pub semaine: O<String>,
-    pub activite: O<String>,
+    pub discriminant: O<String>,
     pub sous_groupe: O<u32>,
 }
 

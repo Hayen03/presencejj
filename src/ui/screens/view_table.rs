@@ -24,7 +24,7 @@ lazy_static! {
 		" pour revenir en arrière ".gray(),
 	]).centered();
 	pub static ref VIEW_TABLE_BLOCK: Block<'static> = Block::bordered()
-		.title_top(VIEW_TABLE_TITLE.clone())
+		//.title_top(VIEW_TABLE_TITLE.clone())
 		.title_bottom(VIEW_TABLE_INSTRUCTIONS.clone())
 		.border_style(Style::new().white())
 		.border_set(border::THICK)

@@ -1,3 +1,4 @@
+#![feature(iter_intersperse)]
 //use extract::presence::{GroupeExtractConfig, GroupeExtractData};
 use config::Config;
 

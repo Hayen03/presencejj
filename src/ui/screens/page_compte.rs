@@ -13,12 +13,9 @@ use crate::{
 	cdj::{
 		comptes::{Compte, CompteID},
 		membres::{Membre, MembreID, MembreReg},
-	},
-	prelude::AsStr,
-	ui::{
-		fit_str_width, AppState, Screen, UIError, UpdateAction,
-		screens::{Field, FieldBlock, FieldBlockCluster, FieldType, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection},
-	},
+	}, data::Genre, prelude::AsStr, ui::{
+		AppState, Screen, UIError, UpdateAction, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}
+	}
 };
 
 lazy_static! {
@@ -26,6 +23,7 @@ lazy_static! {
 		Line::from("Nom").white().bold(),
 		Line::from("Prénom").white().bold(),
 		Line::from("Naissance (âge)").white().bold(),
+		Line::from("Genre").white().bold(),
 		Line::default(),
 	]);
 }
@@ -142,6 +140,7 @@ struct MembreLine {
 	nom: String,
 	prenom: String,
 	naissance_age: String,
+	genre: Option<Genre>,
 }
 impl MembreLine {
 	fn from_membre(membre: &Membre) -> Self {
@@ -150,6 +149,7 @@ impl MembreLine {
 			nom: membre.nom.clone(),
 			prenom: membre.prenom.clone(),
 			naissance_age: format!("{} ({} ans)", membre.naissance.format("%Y-%m-%d"), membre.age()),
+			genre: membre.genre,
 		}
 	}
 	fn key(&self) -> (&str, &str, &str) {
@@ -160,6 +160,7 @@ impl MembreLine {
 			Line::from(self.nom.as_str()),
 			Line::from(self.prenom.as_str()),
 			Line::from(self.naissance_age.as_str()),
+			Line::from(self.genre.map_or("".to_string(), |g| g.to_string())),
 			Line::default(),
 		])
 	}
@@ -185,14 +186,14 @@ impl Ord for MembreLine {
 struct ViewMembres {
 	membres: Vec<MembreLine>,
 	table_state: RwLock<TableState>,
-	widths: [Constraint; 4],
+	widths: [Constraint; 5],
 }
 impl ViewMembres {
 	fn new(compte: &Compte, membres: &MembreReg) -> Self {
 		let mut this = Self {
 			membres: Vec::new(),
 			table_state: RwLock::new(TableState::default()),
-			widths: [Constraint::default(); 4],
+			widths: [Constraint::default(); 5],
 		};
 		this.update(compte, membres);
 		this
@@ -212,10 +213,12 @@ impl ViewMembres {
 		let nom = fit_str_width(self.membres.iter().map(|m| m.nom.as_str()).chain(std::iter::once("Nom")));
 		let prenom = fit_str_width(self.membres.iter().map(|m| m.prenom.as_str()).chain(std::iter::once("Prénom")));
 		let naissance = fit_str_width(self.membres.iter().map(|m| m.naissance_age.as_str()).chain(std::iter::once("Naissance (âge)")));
+		let genre = fit_str_width(self.membres.iter().flat_map(|m| m.genre.map(|g| g.as_str())).chain(std::iter::once("Genre")));
 		self.widths = [
 			Constraint::Length(nom as u16 + 2),
 			Constraint::Length(prenom as u16 + 2),
 			Constraint::Length(naissance as u16 + 2),
+			Constraint::Length(genre as u16 + 2),
 			Constraint::Fill(1),
 		];
 	}

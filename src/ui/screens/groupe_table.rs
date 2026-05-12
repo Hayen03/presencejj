@@ -223,8 +223,12 @@ impl Screen for GroupeTable {
 						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
-						// todo! select the group and show detailed view
-						Ok(UpdateAction::Continue.one())
+						if let Some(sel) = self.state.read().expect("Poisoned Lock").selected() {
+							let gid = self.data.get(sel).expect("Index out of bound").id;
+							Ok(UpdateAction::OpenGroupe(gid, None).one())
+						} else {
+							Ok(UpdateAction::Continue.one())
+						}
 					},
 					cte::KeyCode::Esc => Ok(UpdateAction::Pop.one()),
 					_ => Ok(UpdateAction::Continue.one()),
