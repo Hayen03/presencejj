@@ -56,6 +56,7 @@ impl<T: Debug> Screen for TaskScreen<T> {
 				match (res, err) {
 					(Some(screen), None) => { // good ending
 						self.screen = screen;
+						return Ok(UpdateAction::Redraw.one());
 					},
 					(None, Some(err)) => { // bad ending
 						return Ok(vec![

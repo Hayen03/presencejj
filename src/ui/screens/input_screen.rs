@@ -205,7 +205,7 @@ impl<'a> Screen for LineInputScreen<'a> {
 						self.input.write().expect("Poisoned Lock").set_style(*INPUT_STYLE);
 					}
 				}
-				Ok(crate::ui::UpdateAction::Continue.one())
+				Ok(crate::ui::UpdateAction::Redraw.one())
 			},
 		}
 	}

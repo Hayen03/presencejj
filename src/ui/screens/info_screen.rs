@@ -72,11 +72,11 @@ impl<'a> Screen for InfoScreen<'a> {
 					KeyCode::Esc => { Ok(crate::ui::UpdateAction::Pop.one()) },
 					KeyCode::Up => {
 						self.scroll = self.scroll.saturating_sub(1);
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					KeyCode::Down => {
 						self.scroll = self.scroll.saturating_add(1);
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 				}
@@ -86,11 +86,11 @@ impl<'a> Screen for InfoScreen<'a> {
 				match mouse.kind {
 					MouseEventKind::ScrollUp => {
 						self.scroll = self.scroll.saturating_sub(1);
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					MouseEventKind::ScrollDown => {
 						self.scroll = self.scroll.saturating_add(1);
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 				}

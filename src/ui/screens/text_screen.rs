@@ -53,12 +53,12 @@ impl<'a> Screen for TextScreen<'a> {
 					cte::KeyCode::Up => {
 						let new_scroll = self.scroll.get().saturating_sub(1);
 						self.scroll.set(new_scroll);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					}
 					cte::KeyCode::Down => {
 						let new_scroll = self.scroll.get().saturating_add(1);
 						self.scroll.set(new_scroll);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					}
 					cte::KeyCode::Enter => {
 						Ok(UpdateAction::Pop.one())

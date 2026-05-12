@@ -13,6 +13,7 @@ pub struct App {
 	stack: Vec<Box<dyn Screen>>, // Screen that appears in the zone to the left of the menu
 	sub_screen_stack: Vec<Box<dyn Screen>>, // Screen that appears on top of everything else, used for popups and such
 	state: Arc<AppState>,
+	redraw_requested: bool,
 }
 impl Default for App {
 	fn default() -> Self {
@@ -39,13 +40,17 @@ impl Default for App {
 			stack: vec![],
 			sub_screen_stack: vec![],
 			state: Arc::new(AppState::default()),
+			redraw_requested: true,
 		}
 	}
 }
 impl App {
 	pub fn run(mut self, terminal: &mut Tui) -> Result<(), UIError> {
 		loop {
-			terminal.draw(&self)?;
+			if self.redraw_requested {
+				terminal.draw(&self)?;
+				self.redraw_requested = false;
+			}
 			let event = terminal.events.next()?;
 			match self.update(event) {
 				Ok(cont) => {
@@ -108,6 +113,7 @@ impl App {
 					PollRequest::Menu(poll) => Box::new(poll.into_screen()) as Box<dyn Screen>,
 				};
 				self.sub_screen_stack.push(screen);
+				self.redraw_requested = true;
 			}
 		}
 		let events = self.update_current_screen(event)?;
@@ -159,28 +165,34 @@ impl App {
 				};
 				let state = self.state.clone();
 				self.get_focused_screen_mut().on_refocus(state);
+				self.redraw_requested = true;
 				Ok(ret)
 			},
 			UpdateAction::Push(screen) => {
 				self.stack.push(screen);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::PushSub(screen) => {
 				self.sub_screen_stack.push(screen);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::Replace(screen) => {
 				self.stack.pop();
 				self.stack.push(screen);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::ReplaceSub(screen) => {
 				self.sub_screen_stack.pop();
 				self.sub_screen_stack.push(screen);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::ErrorPopUp(err) => {
 				self.sub_screen_stack.push(Box::new(ErrorScreen::from_error(err)));
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::ErrorReplace(err) => {
@@ -188,6 +200,7 @@ impl App {
 					self.stack.pop();
 				}
 				self.sub_screen_stack.push(Box::new(ErrorScreen::from_error(err)));
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::Bell => {
@@ -199,13 +212,16 @@ impl App {
 			},
 			UpdateAction::OpenCompte(cid) => {
 				// todo! implement this
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::OpenGroupe(gid) => {
 				// todo! implement this
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::OpenMembre(mid) => {
+				self.redraw_requested = true;
 				match self.state.membres.read().expect("Poisoned Lock").get(mid) {
 					Ok(membre) => {
 						let comptes = self.state.comptes.read().expect("Poisoned Lock");
@@ -223,14 +239,21 @@ impl App {
 			},
 			UpdateAction::UpdateCompte(cid) => {
 				self.state.comptes.write().expect("Poisoned Lock").update(cid);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::UpdateGroupe(gid) => {
 				self.state.groupes.write().expect("Poisoned Lock").update(gid);
+				self.redraw_requested = true;
 				Ok(true)
 			},
 			UpdateAction::UpdateMembre(mid) => {
 				self.state.membres.write().expect("Poisoned Lock").update(mid);
+				self.redraw_requested = true;
+				Ok(true)
+			},
+			UpdateAction::Redraw => {
+				self.redraw_requested = true;
 				Ok(true)
 			},
 		}

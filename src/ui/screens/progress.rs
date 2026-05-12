@@ -1,23 +1,51 @@
-use std::sync::{Arc, Mutex};
+use std::{cell::Cell, sync::{Arc, Mutex}};
 
 use ratatui::{layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Gauge, Paragraph, Widget, WidgetRef}};
 
 use crate::ui::{AppState, ScreenSize, Theme, UIError, screens::Desc};
 
-
+#[derive(Debug, Clone, Default)]
+pub struct OneLineLogger {
+	text: Desc,
+	dirty: bool,
+}
+impl OneLineLogger {
+	pub fn log(&mut self, text: Desc) {
+		self.text = text;
+		self.dirty = true;
+	}
+	pub fn get_text(&self) -> Desc {
+		self.text.clone()
+	}
+	pub fn is_dirty(&self) -> bool {
+		self.dirty
+	}
+	pub fn clean(&mut self) {
+		self.dirty = false;
+	}
+}
 
 #[derive(Debug)]
 pub struct ProgressBar {
 	progress: Arc<Mutex<u32>>,
+	previous_progress: Cell<u32>,
 	_cancel: Arc<Mutex<bool>>,
-	text: Arc<Mutex<Desc>>,
+	logger: Arc<Mutex<OneLineLogger>>,
 	target: u32,
 	thread_handle: Option<std::thread::JoinHandle<Result<(), UIError>>>,
 	title: String,
 }
 impl ProgressBar {
 	pub fn new(title: String, target: u32) -> Self {
-		Self { progress: Arc::new(Mutex::new(0)), _cancel: Arc::new(Mutex::new(false)), text: Arc::new(Mutex::new(Desc::None)), target, thread_handle: None, title }
+		Self { 
+			progress: Arc::new(Mutex::new(0)), 
+			_cancel: Arc::new(Mutex::new(false)), 
+			logger: Arc::new(Mutex::new(OneLineLogger::default())), 
+			target, 
+			thread_handle: None, 
+			title, 
+			previous_progress: Cell::new(0) 
+		}
 	}
 	pub fn get_progress(&self) -> u32 {
 		*self.progress.lock().unwrap()
@@ -49,8 +77,8 @@ impl ProgressBar {
 	pub fn get_progress_reference(&self) -> Arc<Mutex<u32>> {
 		self.progress.clone()
 	}
-	pub fn get_text_reference(&self) -> Arc<Mutex<Desc>> {
-		self.text.clone()
+	pub fn get_text_reference(&self) -> Arc<Mutex<OneLineLogger>> {
+		self.logger.clone()
 	}
 	pub fn with_thread(mut self, thread_handle: std::thread::JoinHandle<Result<(), UIError>>) -> Self {
 		self.thread_handle = Some(thread_handle);
@@ -80,7 +108,7 @@ impl WidgetRef for ProgressBar {
 		ratatui::widgets::Clear.render(area, buf); // clear the area before rendering the progress bar
 
 		let title = Line::from(self.title.as_str()).white().bold();
-		let desc = match self.text.lock().expect("Poisoned lock").clone() {
+		let desc = match self.logger.lock().expect("Poisoned lock").get_text() {
 			Desc::None => Line::from(""),
 			Desc::Info(s) => Line::from(s).green(),
 			Desc::Warning(s) => Line::from(s).yellow(),
@@ -142,6 +170,10 @@ impl WidgetRef for ProgressBar {
 				.left_aligned()
 				.render(desc_area, buf);
 		}
+
+		// update previous progress to check for changes in the next render
+		self.previous_progress.set(progress);
+		self.logger.lock().expect("Poisoned lock").clean();
 	}
 }
 impl crate::ui::Screen for ProgressBar {
@@ -169,11 +201,15 @@ impl crate::ui::Screen for ProgressBar {
 							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one())
 						} else {
 							self.set_progress(self.get_target());
-							Ok(crate::ui::UpdateAction::Continue.one())
+							Ok(crate::ui::UpdateAction::Redraw.one())
 						}
+					} else if self.logger.lock().expect("Poisoned Lock").is_dirty() || self.get_progress() != self.previous_progress.get() {
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					} else {
 						Ok(crate::ui::UpdateAction::Continue.one())
 					}
+				} else if self.logger.lock().expect("Poisoned Lock").is_dirty() || self.get_progress() != self.previous_progress.get() {
+					Ok(crate::ui::UpdateAction::Redraw.one())
 				} else {
 					Ok(crate::ui::UpdateAction::Continue.one())
 				}

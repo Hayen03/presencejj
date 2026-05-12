@@ -215,6 +215,7 @@ impl Screen for ChandailScreen {
 								let mut results = hash_map.into_iter().collect::<Vec<_>>();
 								results.sort();
 								self.results = Some(results);
+								return Ok(UpdateAction::Redraw.one());
 							},
 							Ok(Err(e)) => {
 								return Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(e)).one());

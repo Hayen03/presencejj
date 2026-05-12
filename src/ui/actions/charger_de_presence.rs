@@ -11,21 +11,25 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 			*lock = parent.to_path_buf();
 		}
 
-		let mut workbook = match office::Excel::open(filepath) {
-			Ok(wb) => wb,
-			Err(_e) => return Err(ExtractError::CouldNotReadFile.into()),
-		};
-		let sheets = get_sheets(&mut workbook);
-
-		let screen = crate::ui::screens::ProgressLogScreen::new("Chargement des listes de présence".into(), sheets.len() as u32);
+		let screen = crate::ui::screens::ProgressLogScreen::new("Chargement des listes de présence".into(), 1);
+		let target_hook = screen.get_target_hook();
 		let progress_hook = screen.get_progress_hook();
 		let cancel_hook = screen.get_cancel_hook();
 		let log_hook = screen.get_logger();
 
 		let thread_handle: std::thread::JoinHandle<Result<(), UIError>> = std::thread::spawn(move || {
+			log_hook.lock().expect("Poisoned Lock").log(Desc::Info("Ouverture du fichier".into()));
+			let mut workbook = match office::Excel::open(filepath) {
+				Ok(wb) => wb,
+				Err(_e) => return Err(ExtractError::CouldNotReadFile.into()),
+			};
+			let sheets = get_sheets(&mut workbook);
+			*target_hook.lock().expect("Poisoned Lock") = sheets.len() as u32;
+
 			let mut dc: Option<DataColConfig> = None;
-			let logger = |err: &str| {
-				log_hook.lock().expect("Poisoned Lock").log(Desc::Error(err.into()));
+			let logger = log_hook.clone();
+			let logger = move |err: &str| {
+				logger.lock().expect("Poisoned Lock").log(Desc::Error(err.into()));
 			};
 			for sheet in sheets {
 				log_hook.lock().expect("Poisoned Lock").log(Desc::Info(format!("Lecture de la feuille '{}'", sheet)));

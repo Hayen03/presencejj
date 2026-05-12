@@ -212,7 +212,7 @@ impl Screen for GroupeTable {
 						let sel = Some(sel.map(|s| s.saturating_sub(1)).unwrap_or(0).min(self.data.len()));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Down => {
 						// incr selection
@@ -220,7 +220,7 @@ impl Screen for GroupeTable {
 						let sel = Some(sel.map(|s| s.saturating_add(1)).unwrap_or(0).min(self.data.len()));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
 						// todo! select the group and show detailed view

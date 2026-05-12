@@ -290,6 +290,7 @@ struct StatsScreen<'a> {
 	new_query_flag: Arc<Mutex<bool>>,
 	cancel_hook: Arc<Mutex<bool>>,
 	progress_hook: Arc<Mutex<u32>>,
+	previous_progress: Cell<u32>,
 }
 impl<'a> StatsScreen<'a> {
 	fn with_thread(mut self, thread: std::thread::JoinHandle<Result<StatsResult, UIError>>) -> Self {
@@ -365,11 +366,17 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 				Paragraph::new(loading).block(block).wrap(Wrap { trim: false }).render(area, buf);
 			},
 		}
+
+		// update previous progress
+		self.previous_progress.set(*self.progress_hook.lock().expect("Poisoned Lock"));
 	}
 }
 impl<'a> Screen for StatsScreen<'a> {
 	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
 		self.sync_query_first_input();
+
+		let current_progress = *self.progress_hook.lock().expect("Poisoned Lock");
+		let previous_progress = self.previous_progress.get();
 
 		match &mut *self.step.lock().expect("Poisoned Lock") {
 			Step::QueryCap { query } => {
@@ -381,7 +388,7 @@ impl<'a> Screen for StatsScreen<'a> {
 						query.morph.insert(*current_gid, line);
 					}
 				}
-				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event, current_progress, previous_progress)
 			},
 			Step::QueryAnnulation { query } => {
 				let current_gid = query.order.get(query.at);
@@ -391,7 +398,7 @@ impl<'a> Screen for StatsScreen<'a> {
 						query.morph.insert(*current_gid, line);
 					}
 				}
-				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event, current_progress, previous_progress)
 			},
 			Step::QueryAttente { query } => {
 				let current_gid = query.order.get(query.at);
@@ -401,7 +408,7 @@ impl<'a> Screen for StatsScreen<'a> {
 						query.morph.insert(*current_gid, line);
 					}
 				}
-				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event)
+				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event, current_progress, previous_progress)
 			},
 			Step::Done { result, scroll, current_max_scroll, .. } => {
 				match event {
@@ -414,12 +421,12 @@ impl<'a> Screen for StatsScreen<'a> {
 							cte::KeyCode::Up => {
 								// scroll up
 								*scroll = scroll.saturating_sub(1).min(current_max_scroll.get().unwrap_or(0));
-								Ok(UpdateAction::Continue.one())
+								Ok(UpdateAction::Redraw.one())
 							},
 							cte::KeyCode::Down => {
 								// scroll down
 								*scroll = scroll.saturating_add(1).min(current_max_scroll.get().unwrap_or(0));
-								Ok(UpdateAction::Continue.one())
+								Ok(UpdateAction::Redraw.one())
 							},
 							_ => Ok(UpdateAction::Continue.one()),
 						}
@@ -455,7 +462,7 @@ impl<'a> Screen for StatsScreen<'a> {
 							Ok(Ok(result)) => { // thread completed successfully
 								let text = make_text(&result);
 								*step = Step::Done { result: Box::new(result), text, scroll: 0, current_max_scroll: Cell::new(None) };
-								Ok(UpdateAction::Continue.one())
+								Ok(UpdateAction::Redraw.one())
 							},
 						}
 					},
@@ -466,7 +473,7 @@ impl<'a> Screen for StatsScreen<'a> {
 	}
 }
 
-fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut TextArea, event: crate::ui::event::Event) -> Result<super::UpdateActions, UIError> {
+fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut TextArea, event: crate::ui::event::Event, current_progress: u32, previous_progress: u32) -> Result<super::UpdateActions, UIError> {
 	match event {
 		crate::ui::event::Event::Key(key) => {
 			match key.code {
@@ -500,19 +507,26 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut Text
 				cte::KeyCode::Up => {
 					let new_pos = query.at.saturating_sub(1);
 					move_cursor(query, new_pos, input);
-					Ok(UpdateAction::Continue.one())
+					Ok(UpdateAction::Redraw.one())
 				},
 				cte::KeyCode::Down => {
 					let new_pos = query.at.saturating_add(1);
 					move_cursor(query, new_pos, input);
-					Ok(UpdateAction::Continue.one())
+					Ok(UpdateAction::Redraw.one())
 				},
 				_e => {
 					// pass the event to the current text area
 					let current_gid = query.order.get(query.at).expect("Query order is empty") ;
 					input.input(key);
-					Ok(UpdateAction::Continue.one())
+					Ok(UpdateAction::Redraw.one())
 				},
+			}
+		},
+		crate::ui::event::Event::Tick => {
+			if current_progress != previous_progress {
+				Ok(UpdateAction::Redraw.one())
+			} else {
+				Ok(UpdateAction::Continue.one())
 			}
 		},
 		_ => {

@@ -147,7 +147,7 @@ impl Screen for ViewTable {
 				match key.code {
 					cte::KeyCode::Tab => {
 						self.selection = self.selection.next();
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Esc => {
 						Ok(UpdateAction::Pop.one())

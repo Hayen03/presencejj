@@ -73,6 +73,7 @@ impl Desc {
 #[derive(Debug, Clone, Default)]
 pub struct Logger<'a> {
 	text: Text<'a>,
+	dirty: bool,
 }
 impl Logger<'_> {
 	pub fn log(&mut self, desc: Desc) {
@@ -83,6 +84,7 @@ impl Logger<'_> {
 			Desc::Error(s) => Line::from(s).red(),
 		};
 		self.text.push_line(line);
+		self.dirty = true;
 	}
 	pub fn widget(&'_ self) -> Paragraph<'_> {
 		Paragraph::new(self.text.clone()).wrap(Wrap { trim: false })
@@ -99,6 +101,12 @@ impl Logger<'_> {
 		}).sum()
 	}
 	*/
+	pub fn clean(&mut self) {
+		self.dirty = false;
+	}
+	pub fn is_dirty(&self) -> bool {
+		self.dirty
+	}
 }
 
 #[derive(Debug, Clone, Copy, Default)]

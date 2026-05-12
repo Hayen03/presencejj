@@ -105,11 +105,11 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 		match event.code {
 			KeyCode::Up => {
 				self.previous();
-				Ok(UpdateAction::Continue.one())
+				Ok(UpdateAction::Redraw.one())
 			},
 			KeyCode::Down => {
 				self.next();
-				Ok(UpdateAction::Continue.one())
+				Ok(UpdateAction::Redraw.one())
 			},
 			KeyCode::Esc => {
 				if let Some(action) = &self.cancel_action {

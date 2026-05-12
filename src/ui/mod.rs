@@ -202,7 +202,7 @@ impl Theme {
 		//menu_item_selected_color: Color::Yellow,
 		//menu_item_selected_bg_color: Color::DarkGray,
 		//background_color: Color::Black,
-		main_menu_width: 30,
+		main_menu_width: 40,
 		app_min_width: 80, // if the terminal is smaller than this, it will only render one screen at a time instead of seeing the screen and the menu at the same time with pop-ups on top.
 		progress_bar_height: ScreenSize::Length(6),
 		//progress_bar_color: Color::White,
@@ -234,6 +234,7 @@ pub enum UpdateAction {
 	UpdateMembre(Membre),
 	UpdateCompte(Compte),
 	UpdateGroupe(Groupe),
+	Redraw,
 }
 impl UpdateAction {
 	pub fn one(self) -> Vec<Self> {

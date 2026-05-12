@@ -19,8 +19,9 @@ lazy_static!{
 pub struct ProgressLogScreen<'a> {
 	scroll_mode: Cell<ScrollMode>,
 	logger: Arc<Mutex<Logger<'a>>>,
-	target: u32,
+	target: Arc<Mutex<u32>>,
 	progress: Arc<Mutex<u32>>,
+	previous_progress: Cell<u32>,
 	title: Line<'a>,
 	thread_handle: Option<std::thread::JoinHandle<Result<(), UIError>>>,
 	cancel_hook: Arc<Mutex<bool>>, // to cancel the thread early
@@ -32,30 +33,36 @@ impl<'a> ProgressLogScreen<'a> {
 		Self {
 			scroll_mode: Cell::new(ScrollMode::Auto),
 			logger: Arc::new(Mutex::new(Logger::default())),
-			target,
+			target: Arc::new(Mutex::new(target)),
 			progress: Arc::new(Mutex::new(0)),
 			title,
 			thread_handle: None,
 			cancel_hook: Arc::new(Mutex::new(false)),
 			max_scroll: Cell::new(0),
+			previous_progress: Cell::new(0),
 		}
 	}
 	pub fn get_logger(&self) -> Arc<Mutex<Logger<'a>>> {
 		self.logger.clone()
 	}
 	pub fn ratio(&self) -> f64 {
-		if self.target == 0 {
+		let target = *self.target.lock().expect("Poisoned Lock");
+		if target == 0 {
 			1.0
 		} else {
 			let progress = *self.progress.lock().expect("Poisoned Lock");
-			(progress as f64 / self.target as f64).clamp(0.0, 1.0)
+			(progress as f64 / target as f64).clamp(0.0, 1.0)
 		}
 	}
 	pub fn is_done(&self) -> bool {
-		*self.progress.lock().expect("Poisoned Lock") >= self.target
+		let target = *self.target.lock().expect("Poisoned Lock");
+		*self.progress.lock().expect("Poisoned Lock") >= target
 	}
 	pub fn get_progress_hook(&self) -> Arc<Mutex<u32>> {
 		self.progress.clone()
+	}
+	pub fn get_target_hook(&self) -> Arc<Mutex<u32>> {
+		self.target.clone()
 	}
 	pub fn get_cancel_hook(&self) -> Arc<Mutex<bool>> {
 		self.cancel_hook.clone()
@@ -94,9 +101,11 @@ impl WidgetRef for ProgressLogScreen<'_> {
 		};
 		let progress_ratio = self.ratio();
 		let progress_block = PROGRESS_BLOCK.clone();
+		let progress = *self.progress.lock().expect("Poisoned Lock");
+		let target = *self.target.lock().expect("Poisoned Lock");
 		Gauge::default()
 		.ratio(progress_ratio)
-		.label(format!("{}/{}", *self.progress.lock().expect("Poisoned Lock"), self.target))
+		.label(format!("{}/{}", progress, target))
 		.use_unicode(true)
 		.block(progress_block)
 		.render(progress_area, buf);
@@ -108,7 +117,7 @@ impl WidgetRef for ProgressLogScreen<'_> {
 			width: inner.width,
 			height: inner.height - 1,
 		};
-		let logger = self.logger.lock().expect("Poisoned Lock");
+		let mut logger = self.logger.lock().expect("Poisoned Lock");
 		let logs = logger.widget();
 		let logh = logs.line_count(log_area.width);
 		// determine the scrolling
@@ -123,6 +132,10 @@ impl WidgetRef for ProgressLogScreen<'_> {
 		}
 		logs.scroll((scroll.try_into().unwrap_or(u16::MAX), 0)).render(log_area, buf);
 		self.max_scroll.set(max_scroll);
+
+		// update data to check if progress or logs have changed since last render
+		self.previous_progress.set(*self.progress.lock().expect("Poisoned Lock"));
+		logger.clean();
 	}
 }
 impl Screen for ProgressLogScreen<'_> {
@@ -158,7 +171,7 @@ impl Screen for ProgressLogScreen<'_> {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_sub(1)));
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					KeyCode::Down => {
 						// switch to manual scroll and decrease scroll
@@ -167,7 +180,7 @@ impl Screen for ProgressLogScreen<'_> {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_add(1)));
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					_ => Ok(crate::ui::UpdateAction::Continue.one()),
 				}
@@ -179,8 +192,8 @@ impl Screen for ProgressLogScreen<'_> {
 					match thread_result {
 						Ok(Ok(())) => { // completed successfully
 							// set the progress bar to full to mark as completed
-							*self.progress.lock().expect("Poisoned Lock") = self.target;
-							Ok(crate::ui::UpdateAction::Continue.one())
+							*self.progress.lock().expect("Poisoned Lock") = *self.target.lock().expect("Poisoned Lock");
+							Ok(crate::ui::UpdateAction::Redraw.one())
 						},
 						Ok(Err(err)) => { // completed with error
 							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(err)).one())
@@ -189,6 +202,8 @@ impl Screen for ProgressLogScreen<'_> {
 							Ok(crate::ui::UpdateAction::ErrorReplace(Box::new(UIError::Runtime { src: err })).one())
 						},
 					}
+				} else if self.previous_progress.get() != *self.progress.lock().expect("Poisoned Lock") || self.logger.lock().expect("Poisoned Lock").is_dirty() {
+					Ok(crate::ui::UpdateAction::Redraw.one())
 				} else {
 					Ok(crate::ui::UpdateAction::Continue.one())
 				}
@@ -203,7 +218,7 @@ impl Screen for ProgressLogScreen<'_> {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_sub(1)));
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					MouseEventKind::ScrollDown => {
 						// switch to manual scroll and decrease scroll
@@ -212,7 +227,7 @@ impl Screen for ProgressLogScreen<'_> {
 							ScrollMode::Manual(s) => s,
 						};
 						self.scroll_mode.set(ScrollMode::Manual(current_scroll.saturating_add(1)));
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					_ => Ok(crate::ui::UpdateAction::Continue.one()),
 				}

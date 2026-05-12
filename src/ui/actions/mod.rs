@@ -49,15 +49,15 @@ impl MainActions {
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			MainActions::Quitter => "Quitter",
-			MainActions::ChargerDeProg => "Charger de prog",
-			MainActions::ChargerDePresence => "Charger de présence",
-			MainActions::ImprimerListesPresence => "Imprimer listes de présence",
-			MainActions::ImprimerFichesSante => "Imprimer fiches santé",
-			MainActions::EstimerChandails => "Estimer chandails",
-			MainActions::FaireSousGroupes => "Faire sous-groupes",
-			MainActions::ImprimerStats => "Imprimer stats",
-			MainActions::AfficherDonnees => "Afficher données",
-			MainActions::ChargerDeFichier => "Charger de fichier",
+			MainActions::ChargerDeProg => "Charger d'une programmation",
+			MainActions::ChargerDePresence => "Charger d'une fiche de présence",
+			MainActions::ImprimerListesPresence => "Imprimer les listes de présence",
+			MainActions::ImprimerFichesSante => "Imprimer les fiches santé",
+			MainActions::EstimerChandails => "Estimer les chandails",
+			MainActions::FaireSousGroupes => "Faire les sous-groupes",
+			MainActions::ImprimerStats => "Imprimer les stats",
+			MainActions::AfficherDonnees => "Afficher les données",
+			MainActions::ChargerDeFichier => "Charger",
 			MainActions::Sauvegarder => "Sauvegarder",
 		}
 	}

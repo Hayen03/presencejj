@@ -109,11 +109,11 @@ impl Screen for ErrorScreen<'_> {
 						if self.scroll > 0 {
 							self.scroll -= 1;
 						}
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					crossterm::event::KeyCode::Down => {
 						self.scroll += 1;
-						Ok(crate::ui::UpdateAction::Continue.one())
+						Ok(crate::ui::UpdateAction::Redraw.one())
 					},
 					_ => { Ok(crate::ui::UpdateAction::Continue.one()) },
 				}

@@ -80,13 +80,13 @@ impl Screen for ViewGeneral {
 						// decrement sel
 						let sel = self.sel.unwrap_or(0).saturating_sub(1);
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Down => {
 						// increment sel
 						let sel = if let Some(sel) = self.sel { sel.saturating_add(1).min(self.ordre.len()-1) } else { 0 };
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
@@ -267,13 +267,13 @@ impl Screen for ViewFicheSante {
 						// decrement sel
 						let sel = self.sel.unwrap_or(0).saturating_sub(1);
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Down => {
 						// increment sel
 						let sel = if let Some(sel) = self.sel { sel.saturating_add(1).min(self.ordre.len()-1) } else { 0 };
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
@@ -445,13 +445,13 @@ impl Screen for ViewGroupes {
 						// decrement sel
 						let sel = self.sel.unwrap_or(0).saturating_sub(1);
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Down => {
 						// increment sel
 						let sel = if let Some(sel) = self.sel { sel.saturating_add(1).min(self.groupes.len()-1) } else { 0 };
 						self.sel = Some(sel);
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
@@ -609,7 +609,7 @@ impl Screen for PageMembre {
 							PageMembreView::FicheSante => self.view_fiche_sante.reset(),
 							PageMembreView::Groupes => self.view_groupes.reset(),
 						}
-						Ok(UpdateAction::Continue.one())
+						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Esc => {
 						{
