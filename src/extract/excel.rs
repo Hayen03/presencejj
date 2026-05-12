@@ -3,7 +3,7 @@ use std::str::FromStr;
 use console::{style, Term};
 use office::{DataType, Excel, Range};
 
-use crate::{data::{adresse::Adresse, cam::CAM, email::Email, tel::Tel, BoolJustifie, Genre, Taille}, cdj::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, prelude::{print_option, Date, O}};
+use crate::{cdj::{comptes::{Compte, CompteID, CompteReg}, fiche_sante::{ALL_ALIMENTAIRE, ALL_ANIMAUX, ALL_INSECTES, ALL_PENICILINE, MAL_ASTHME, MAL_DIABETE, MAL_EMOPHILIE, MAL_EPILEPSIE}, groupes::{Groupe, GroupeID, GroupeReg}, membres::{Contact, Interet, Membre, MembreID, MembreReg}}, data::{BoolJustifie, Genre, Taille, adresse::Adresse, cam::CAM, email::Email, tel::Tel}, prelude::{Date, O, capitalize, print_option}};
 use crate::config::Config;
 
 use super::{ExtractError, BOOL_W_COMMENT_DATA_RE, DATE_NAISSANCE_RE, FALSE_DATA_RE, GROUPE_PROG_RE, GROUPE_RE, TRUE_DATA_RE};
@@ -185,11 +185,11 @@ pub fn extract_membre_info(ln: &[DataType], dcc: &DataColConfig) -> Result<Membr
     };
     mbr.nom = match into_string(&ln[col_nom]) {
         None => return Err(ExtractError::MissingInformations("Nom")),
-        Some(n) => n,
+        Some(n) => capitalize(&n),
     };
     mbr.prenom = match into_string(&ln[col_prenom]) {
         None => return Err(ExtractError::MissingInformations("Prénom")),
-        Some(n) => n,
+        Some(n) => capitalize(&n),
     };
     mbr.naissance = match into_string(&ln[col_naissance]) {
         None => return Err(ExtractError::MissingInformations("Naissance")),
@@ -544,7 +544,7 @@ pub fn extract_compte_info(ln: &[DataType], dcc: &DataColConfig, logerr: Option<
     };
     cmpt.mandataire = match into_string(&ln[col_mandataire]) {
         None => return Err(ExtractError::InvalidFormat),
-        Some(m) => m,
+        Some(m) => capitalize(&m),
     };
     if let Some(col_email) = dcc.courriel {
         let email = into_string(&ln[col_email]).map(|s| Email::from_str(&s).ok());

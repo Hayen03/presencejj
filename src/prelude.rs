@@ -72,12 +72,42 @@ pub fn today() -> Date {
 
 /// provient de https://nick.groenen.me/notes/capitalize-a-string-in-rust/
 /// Capitalizes the first character in s.
-pub fn capitalize(s: &str) -> String {
-	let mut c = s.chars();
-	match c.next() {
+fn capitalize_inner(s: &str) -> String {
+	let c = s.chars().next();
+	match c {
 		None => String::new(),
-		Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+		Some(f) => f.to_uppercase().collect::<String>() + s.chars().skip(1).flat_map(|c| c.to_lowercase()).collect::<String>().as_str(),
 	}
+}
+pub fn capitalize(s: &str) -> String {
+	let mut parts = vec![];
+	let mut current_start = 0;
+	let mut previous_sep: Option<char> = None;
+	for (i, c) in s.trim().char_indices() {
+		if c.is_whitespace() || c == '-' {
+			if current_start != i {
+				let s = &s[current_start..i];
+				if !s.is_empty() {
+					if let Some(sep) = previous_sep.take() {
+						parts.push(sep.to_string());
+					}
+					parts.push(capitalize_inner(s));
+					previous_sep = Some(c);
+				}
+			}
+			current_start = i + c.len_utf8();
+		}
+	}
+	if current_start != s.len() {
+		let s = &s[current_start..];
+		if !s.is_empty() {
+			if let Some(sep) = previous_sep.take() {
+				parts.push(sep.to_string());
+			}
+			parts.push(capitalize_inner(s));
+		}
+	}
+	parts.concat()
 }
 
 #[allow(clippy::mut_from_ref)]

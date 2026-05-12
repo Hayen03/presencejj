@@ -132,10 +132,11 @@ pub fn charger_de_presence(state: Arc<AppState>) -> crate::ui::actions::ActionRe
 											}
 										};
 										let membre = membres.get_mut(mid)?;
+										/*
 										if let Err(e) = state.comptes.write().expect("Poisoned Lock").get_mut(cid)?.add_membre(membre) {
 											log_hook.lock().expect("Poisoned Lock").log(Desc::Error(format!("Erreur en ajoutant le membre au compte (feuille '{}', ligne {}): {e}", sheet, i + ln_skip + 1)));
-											continue;
 										}
+										*/
 										grp.add_participant(mid);
 									},
 								}
