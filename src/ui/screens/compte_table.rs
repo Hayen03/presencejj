@@ -159,7 +159,7 @@ impl Screen for CompteTable {
 					cte::KeyCode::Up => {
 						// decr selection
 						let sel = self.state.read().expect("Poisoned Lock").selected();
-						let sel = Some(sel.map(|s| s.saturating_sub(1)).unwrap_or(0).min(self.data.len()));
+						let sel = Some(sel.map(|s| s.saturating_sub(1)).unwrap_or(0).min(self.data.len()-1));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
 						Ok(UpdateAction::Redraw.one())
@@ -167,14 +167,19 @@ impl Screen for CompteTable {
 					cte::KeyCode::Down => {
 						// incr selection
 						let sel = self.state.read().expect("Poisoned Lock").selected();
-						let sel = Some(sel.map(|s| s.saturating_add(1)).unwrap_or(0).min(self.data.len()));
+						let sel = Some(sel.map(|s| s.saturating_add(1)).unwrap_or(0).min(self.data.len()-1));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
 						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
 						// todo! select the compte and show detailed view
-						Ok(UpdateAction::Continue.one())
+						if let Some(sel) = self.state.read().expect("Poisoned Lock").selected() {
+							let sel = self.data.get(sel).expect("Selection out of bounds");
+							Ok(UpdateAction::OpenCompte(sel.id).one())
+						} else {
+							Ok(UpdateAction::Continue.one())
+						}
 					},
 					cte::KeyCode::Esc => Ok(UpdateAction::Pop.one()),
 					_ => Ok(UpdateAction::Continue.one()),

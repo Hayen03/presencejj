@@ -11,6 +11,7 @@ mod membre_table;
 mod compte_table;
 mod view_table;
 mod page_membre;
+mod page_compte;
 
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -27,6 +28,7 @@ pub use membre_table::*;
 pub use compte_table::*;
 pub use view_table::*;
 pub use page_membre::*;
+pub use page_compte::*;
 use ratatui::{style::{Color, Stylize}, text::{Line, Span, Text}, widgets::{Paragraph, Wrap}};
 use lazy_static::lazy_static;
 
@@ -504,25 +506,25 @@ impl Field {
 						Ok(actions)
 					}) },
 					MenuItem {id: "Voir", action: Box::new(move |state| {
-						match page {
-							AssociatedPage::Membre { mid } => Ok(UpdateAction::OpenMembre(mid).one()),
-							AssociatedPage::Compte { cid } => Ok(UpdateAction::OpenCompte(cid).one()),
-							AssociatedPage::Groupe { gid, sg } => Ok(UpdateAction::OpenGroupe(gid, sg).one()),
-						}
+						Ok(vec![
+							UpdateAction::Pop, // pop the menu
+							match page {
+								AssociatedPage::Membre { mid } => UpdateAction::OpenMembre(mid),
+								AssociatedPage::Compte { cid } => UpdateAction::OpenCompte(cid),
+								AssociatedPage::Groupe { gid, sg } => UpdateAction::OpenGroupe(gid, sg),
+							},
+						])
 					})},
 				]));
 				UpdateAction::PushSub(Box::new(menu)).one()
 			},
 			(true, None) => mk_action(this, dirty_flag),
 			(false, Some(page)) => { // just open page
-				vec![
-					UpdateAction::Pop,
-					match page {
-						AssociatedPage::Membre { mid } => UpdateAction::OpenMembre(mid),
-						AssociatedPage::Compte { cid } => UpdateAction::OpenCompte(cid),
-						AssociatedPage::Groupe { gid, sg } => UpdateAction::OpenGroupe(gid, sg),
-					},
-				]
+				match page {
+					AssociatedPage::Membre { mid } => UpdateAction::OpenMembre(mid).one(),
+					AssociatedPage::Compte { cid } => UpdateAction::OpenCompte(cid).one(),
+					AssociatedPage::Groupe { gid, sg } => UpdateAction::OpenGroupe(gid, sg).one(),
+				}
 			},
 			(false, None) => UpdateAction::Continue.one(),
 		}

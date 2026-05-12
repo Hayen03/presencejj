@@ -209,7 +209,7 @@ impl Screen for GroupeTable {
 					cte::KeyCode::Up => {
 						// decr selection
 						let sel = self.state.read().expect("Poisoned Lock").selected();
-						let sel = Some(sel.map(|s| s.saturating_sub(1)).unwrap_or(0).min(self.data.len()));
+						let sel = Some(sel.map(|s| s.saturating_sub(1)).unwrap_or(0).min(self.data.len()-1));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
 						Ok(UpdateAction::Redraw.one())
@@ -217,7 +217,7 @@ impl Screen for GroupeTable {
 					cte::KeyCode::Down => {
 						// incr selection
 						let sel = self.state.read().expect("Poisoned Lock").selected();
-						let sel = Some(sel.map(|s| s.saturating_add(1)).unwrap_or(0).min(self.data.len()));
+						let sel = Some(sel.map(|s| s.saturating_add(1)).unwrap_or(0).min(self.data.len()-1));
 						let sel = if self.data.is_empty() { None } else { sel };
 						self.state.write().expect("Poisoned Lock").select(sel);
 						Ok(UpdateAction::Redraw.one())

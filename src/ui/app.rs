@@ -2,7 +2,7 @@ use std::{io::Write, sync::Arc};
 
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
 
-use crate::ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::ErrorScreen, tui::Tui};
+use crate::ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::{ErrorScreen, PageCompte}, tui::Tui};
 use crate::ui::actions;
 use crate::ui::screens::{Menu, MenuItem};
 
@@ -211,7 +211,17 @@ impl App {
 				Ok(true)
 			},
 			UpdateAction::OpenCompte(cid) => {
-				// todo! implement this
+				match self.state.comptes.read().expect("Poisoned Lock").get(cid) {
+					Ok(compte) => {
+						let screen = PageCompte::try_new(compte, &self.state.membres.read().expect("Poisoned Lock"))?;
+						self.stack.push(Box::new(screen));
+					},
+					Err(e) => {
+						let err_screen = ErrorScreen::from_error(Box::new(e));
+						self.sub_screen_stack.push(Box::new(err_screen));
+						return Ok(true);
+					},
+				}
 				self.redraw_requested = true;
 				Ok(true)
 			},
