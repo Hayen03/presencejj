@@ -8,7 +8,7 @@ use crate::ui::{AppState, Screen, ScreenSize, UIError, actions::UpdateActions, l
 
 pub type TextInputValidation = Arc<dyn (Fn(&str) -> bool) + Send + Sync>;
 pub type TextInputAfterResult = Result<UpdateActions, UIError>;
-pub type TextInputAfter = Box<dyn Fn(Option<&str>, Arc<AppState>) -> TextInputAfterResult>;
+pub type TextInputAfter = Box<dyn Fn(Option<&str>, Arc<AppState>) -> TextInputAfterResult + Send + Sync>;
 
 lazy_static!{
 	pub static ref INPUT_BLOCK_INSTRUCTION_WIDTH: u16 = (line_width(&ENTER_ESC_INSTRUCTIONS) as u16).saturating_add(2);
@@ -104,6 +104,13 @@ impl<'a> LineInputScreen<'a> {
 	}
 	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
 		self.size = (width, height);
+		self
+	}
+	pub fn with_value(self, value: String) -> Self {
+		let mut lock = self.input.write().expect("Poisoned Lock");
+		lock.clear();
+		lock.insert_str(value);
+		drop(lock);
 		self
 	}
 	pub fn get_input(&self) -> String {

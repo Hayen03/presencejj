@@ -130,6 +130,16 @@ pub struct Contact {
     pub tel: O<Tel>,
     pub lien: O<String>,
 }
+impl std::fmt::Display for Contact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.tel, &self.lien) {
+            (Some(tel), Some(lien)) => write!(f, "{}: {} ({})", self.nom, tel, lien),
+            (Some(tel), None) => write!(f, "{}: {}", self.nom, tel),
+            (None, Some(lien)) => write!(f, "{}: {}", self.nom, lien),
+            (None, None) => write!(f, "{}", self.nom),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Quitte {

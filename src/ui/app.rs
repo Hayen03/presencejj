@@ -31,7 +31,7 @@ impl Default for App {
 
 			MenuItem { id: actions::MainActions::Sauvegarder, action: Box::new(actions::sauvegarder) },
 			MenuItem { id: actions::MainActions::Quitter, action: Box::new(actions::quit) },
-		])).with_title("Menu Principal".into());
+		])).with_title("Menu Principal".into()).with_size(super::ScreenSize::Fill, super::ScreenSize::Fill);
 		App {
 			should_quit: false,
 			theme: &Theme::DARK,
@@ -210,7 +210,7 @@ impl App {
 					Ok(membre) => {
 						let comptes = self.state.comptes.read().expect("Poisoned Lock");
 						let groupes = self.state.groupes.read().expect("Poisoned Lock");
-						let screen = crate::ui::screens::PageMembre::try_new(membre.clone(), &comptes, &groupes)?;
+						let screen = crate::ui::screens::PageMembre::try_new(membre, &comptes, &groupes)?;
 						self.stack.push(Box::new(screen));
 					},
 					Err(e) => {

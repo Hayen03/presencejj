@@ -58,7 +58,7 @@ impl<'a, Ids> Menu<'a, Ids> where Ids: ToString + Debug {
 		let widget = ratatui::widgets::List::new(items.iter().map(|item| Line::from(item.id.to_string())))
 			.style(Style::new().white())
 			.highlight_style(Style::new().yellow().on_dark_gray());
-		Menu { items, selected: 0, title: None, widget, size: (ScreenSize::Fill, ScreenSize::Fill), fit_width, title_width: 0, cancel_action: None }
+		Menu { items, selected: 0, title: None, widget, size: (ScreenSize::Fit { min: 0, max: u16::MAX }, ScreenSize::Fit { min: 0, max: u16::MAX }), fit_width, title_width: 0, cancel_action: None }
 	}
 	pub fn with_title(mut self, title: String) -> Self {
 		let ln = Line::from(format!(" {title} ")).centered();

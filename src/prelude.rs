@@ -197,3 +197,48 @@ pub fn get_from_reg(reg: &mut HashSet<Arc<str>>, s: &str) -> Arc<str> {
 		arc
 	}
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OuiNon {
+	Oui,
+	Non,
+}
+impl From<bool> for OuiNon {
+	fn from(value: bool) -> Self {
+		if value {
+			OuiNon::Oui
+		} else {
+			OuiNon::Non
+		}
+	}
+}
+impl From<OuiNon> for bool {
+	fn from(value: OuiNon) -> Self {
+		match value {
+			OuiNon::Oui => true,
+			OuiNon::Non => false,
+		}
+	}
+}
+impl std::fmt::Display for OuiNon {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.as_str())
+	}
+}
+impl<'a> AsStr<'static, 'a> for OuiNon {
+	fn as_str(&'a self) -> &'static str {
+		match self {
+			OuiNon::Oui => "Oui",
+			OuiNon::Non => "Non",
+		}
+	}
+}
+
+pub trait AsStr<'a, 'b> {
+	fn as_str(&'b self) -> &'a str;
+}
+impl<'a> AsStr<'a, 'a> for String {
+	fn as_str(&'a self) ->  &'a str {
+		String::as_str(self)
+	}
+}

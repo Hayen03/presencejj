@@ -191,7 +191,7 @@ impl WidgetRef for GroupeTable {
 		let rows = self.data.iter().map(|d| d.to_row());
 		let table = Table::new(rows, &self.width)
 			.header(GROUP_TABLE_HEADERS.clone())
-			.row_highlight_style(Style::new().yellow().on_gray());
+			.row_highlight_style(Style::new().white().on_dark_gray());
 
 		Clear.render(area, buf);
 		// render a black block

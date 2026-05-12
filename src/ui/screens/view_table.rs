@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, WidgetRef};
 
 use crate::cdj::groupes::GroupeReg;
 use crate::cdj::{comptes::CompteReg, membres::MembreReg};
+use crate::prelude::AsStr;
 use crate::ui::{Screen, UpdateAction};
 use crate::ui::screens::{groupe_table::GroupeTable, membre_table::MembreTable, compte_table::CompteTable};
 
@@ -43,14 +44,16 @@ enum Selection {
 	Membres,
 	Comptes,
 }
-impl Selection {
-	fn as_str(&self) -> &'static str {
+impl<'a> AsStr<'static, 'a> for Selection {
+	fn as_str(&'a self) -> &'static str {
 		match self {
 			Selection::Groupes => "Groupes",
 			Selection::Membres => "Membres",
 			Selection::Comptes => "Comptes",
 		}
 	}
+}
+impl Selection {
 	#[allow(dead_code)]
 	fn all() -> [Selection; 3] {
 		[Selection::Groupes, Selection::Membres, Selection::Comptes]
@@ -61,6 +64,11 @@ impl Selection {
 			Selection::Membres => Selection::Comptes,
 			Selection::Comptes => Selection::Groupes,
 		}
+	}
+}
+impl std::fmt::Display for Selection {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.as_str())
 	}
 }
 
@@ -100,11 +108,11 @@ impl WidgetRef for ViewTable {
 
 		// create the header
 		let header = Line::from(vec![
-			stylize_selection(self.selection, Selection::Groupes),
+			stylize_selection(&self.selection, &Selection::Groupes),
 			" | ".gray(),
-			stylize_selection(self.selection, Selection::Membres),
+			stylize_selection(&self.selection, &Selection::Membres),
 			" | ".gray(),
-			stylize_selection(self.selection, Selection::Comptes),
+			stylize_selection(&self.selection, &Selection::Comptes),
 		]);
 		let header_area = Rect {
 			x: inner.x,
@@ -170,7 +178,7 @@ impl Screen for ViewTable {
 
 }
 
-fn stylize_selection(current: Selection, target: Selection) -> Span<'static> {
+pub fn stylize_selection<'a, 'b, T: PartialEq + AsStr<'b, 'a>>(current: &'a T, target: &'a T) -> Span<'b> {
 	if current == target {
 		target.as_str().light_blue().bold().on_gray()
 	} else {
