@@ -1,10 +1,22 @@
 use std::{cell::Cell, sync::{Arc, RwLock}};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, text::{Line, Text}, widgets::{Clear, Paragraph, Widget, WidgetRef, Wrap}};
+use lazy_static::lazy_static;
+use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, text::Line, widgets::{Clear, Paragraph, Row, StatefulWidget, Table, TableState, Widget, WidgetRef, Wrap}};
 
-use crate::{cdj::{comptes::{Compte, CompteID, CompteReg}, groupes::{GroupeID, GroupeReg}, membres::{Membre, MembreID}}, data::adresse::Adresse, prelude::AsStr, ui::{Screen, UIError, UpdateAction, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, PageError, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
+use crate::{cdj::{comptes::{Compte, CompteID, CompteReg}, groupes::{GroupeID, GroupeKey, GroupeReg}, membres::{Membre, MembreID}}, data::adresse::Adresse, prelude::AsStr, ui::{Screen, UIError, UpdateAction, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, PageError, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
 
-
+lazy_static!{
+	pub static ref PAGE_MEMBRE_GROUP_TABLE_HEADER: Row<'static> = Row::new(vec![
+		Line::from("Saison").white().bold(),
+		Line::from("Activité").white().bold(),
+		Line::from("Site").white().bold(),
+		Line::from("Catégorie").white().bold(),
+		Line::from("Semaine").white().bold(),
+		Line::from("Discriminant").white().bold(),
+		Line::from("Sous-Groupe").white().bold(),
+		Line::default(), // extra column to fill space
+	]);
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 enum PageMembreView {
@@ -465,56 +477,27 @@ impl ViewFicheSante {
 #[derive(Debug, Clone)]
 struct GroupeLine {
 	id: GroupeID,
-	_sg: Option<u32>,
-	desc: String,
+	key: GroupeKey,
 }
 
 #[derive(Debug)]
 struct ViewGroupes {
 	groupes: Vec<GroupeLine>,
-	sel: Option<usize>,
-	scroll: Cell<u16>,
+	table_state: RwLock<TableState>,
+	widths: [Constraint; 8],
 	_mid: MembreID,
 }
 impl WidgetRef for ViewGroupes {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
-		let mut lines = Vec::new();
-		let mut at = if self.sel.is_none() { None } else { Some(0) };
-		let mut sel = None;
-		for (i, grp) in self.groupes.iter().enumerate() {
-			let line = if self.sel == Some(i) {
-				sel = at;
-				Line::from(grp.desc.clone()).white().on_dark_gray()
-			} else {
-				Line::from(grp.desc.clone()).gray()
-			};
-			lines.push(line.clone());
-			if let Some(a) = at {
-				let h = Paragraph::new(line).wrap(Wrap {trim: false}).line_count(area.width);
-				at = Some(a + h);
-			}
-		}
-		let text = Text::from(lines);
-		let par = Paragraph::new(text)
-			.wrap(Wrap { trim: false} );
-
-		// determine scroll
-		let h = par.line_count(area.width);
-		let max_scroll = h.saturating_sub(area.height as usize);
-		let current_scroll = self.scroll.get();
-		let scroll = sel.map_or(current_scroll, |idx| {
-			let cs = current_scroll;
-			let idx = idx as u16;
-			if idx < cs {
-				idx
-			} else if idx >= cs + area.height {
-				idx.saturating_sub(area.height).saturating_add(1)
-			} else {
-				cs
-			}
-		}).min(max_scroll as u16);
-
-		par.scroll((scroll, 0)).render(area, buf);
+		let table = Table::new(
+			self.groupes.iter().map(|g| group_key_to_row(&g.key)),
+			&self.widths,
+		)
+			.header(PAGE_MEMBRE_GROUP_TABLE_HEADER.clone())
+			.row_highlight_style(Style::new().white().on_dark_gray())
+			.style(Style::new().gray());
+		let mut lock = self.table_state.write().expect("Poisoned Lock");
+		StatefulWidget::render(table, area, buf, &mut lock);
 	}
 }
 impl Screen for ViewGroupes {
@@ -525,25 +508,27 @@ impl Screen for ViewGroupes {
 				match key.code {
 					cte::KeyCode::Up => {
 						// decrement sel
-						let sel = self.sel.unwrap_or(0).saturating_sub(1);
-						self.sel = Some(sel);
+						let mut lock = self.table_state.write().expect("Poisoned Lock");
+						let sel = lock.selected().map(|s| s.saturating_sub(1)).unwrap_or(0);
+						lock.select(Some(sel));
 						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Down => {
 						// increment sel
-						let sel = if let Some(sel) = self.sel { sel.saturating_add(1).min(self.groupes.len()-1) } else { 0 };
-						self.sel = Some(sel);
+						let mut lock = self.table_state.write().expect("Poisoned Lock");
+						let sel = lock.selected().map(|s| s.saturating_add(1).min(self.groupes.len()-1)).unwrap_or(0);
+						lock.select(Some(sel));
 						Ok(UpdateAction::Redraw.one())
 					},
 					cte::KeyCode::Enter => {
-						if let Some(sel) = self.sel {
+						if let Some(sel) = self.table_state.read().expect("Poisoned Lock").selected() {
 							let g = self.groupes[sel].clone();
 
 							let menu = Menu::new(Box::new([
 								MenuItem {id: "Voir le groupe", action: Box::new(move |state| {
 									Ok(vec![
 										UpdateAction::Pop,
-										UpdateAction::OpenGroupe(g.id, g._sg),
+										UpdateAction::OpenGroupe(g.id, g.key.sous_groupe),
 									])
 								})},
 								MenuItem {id: "Changer le membre de sous-groupe", action: Box::new(move |state| {
@@ -567,18 +552,38 @@ impl ViewGroupes {
 	fn try_new(_membre: &Membre, _compte: Option<&Compte>, groupes: &[GroupeLine]) -> Result<Self, UIError> {
 		Ok(Self {
 			groupes: groupes.to_vec(),
-			sel: None,
-			scroll: Cell::new(0),
+			table_state: RwLock::new(TableState::default()),
+			widths: [Constraint::default(); 8],
 			_mid: _membre.id,
 		})
 	}
 	fn update(&mut self, groupes: &[GroupeLine]) {
 		self.groupes = groupes.to_vec();
 		self.reset();
+		self.fit_widths();
 	}
 	fn reset(&mut self) {
-		self.scroll.set(0);
-		self.sel = None;
+		self.table_state = RwLock::new(TableState::default());
+	}
+	fn fit_widths(&mut self) {
+		let saison = fit_str_width(self.groupes.iter().map(|g| g.key.saison.as_deref().unwrap_or("")).chain(std::iter::once("Saison")));
+		let activite = fit_str_width(self.groupes.iter().map(|g| g.key.activite.as_deref().unwrap_or("")).chain(std::iter::once("Activité")));
+		let site = fit_str_width(self.groupes.iter().map(|g| g.key.site.as_deref().unwrap_or("")).chain(std::iter::once("Site")));
+		let semaine = fit_str_width(self.groupes.iter().map(|g| g.key.semaine.as_deref().unwrap_or("")).chain(std::iter::once("Semaine")));
+		let category = fit_str_width(self.groupes.iter().map(|g| g.key.category.as_deref().unwrap_or("")).chain(std::iter::once("Catégorie")));
+		let discriminant = fit_str_width(self.groupes.iter().map(|g| g.key.discriminant.as_deref().unwrap_or("")).chain(std::iter::once("Discriminant")));
+		let sous_groupe = self.groupes.iter().filter_map(|g| g.key.sous_groupe.map(|sg| sg.to_string())).collect::<Vec<_>>();
+		let sous_groupe = fit_str_width(sous_groupe.iter().map(|s| s.as_str()).chain(std::iter::once("Sous-Groupe")));
+		self.widths = [
+			Constraint::Length(saison as u16 + 2),
+			Constraint::Length(activite as u16 + 2),
+			Constraint::Length(site as u16 + 2),
+			Constraint::Length(semaine as u16 + 2),
+			Constraint::Length(category as u16 + 2),
+			Constraint::Length(discriminant as u16 + 2),
+			Constraint::Length(sous_groupe as u16 + 2),
+			Constraint::Fill(1),
+		];
 	}
 }
 
@@ -603,15 +608,11 @@ impl PageMembre {
 			None
 		};
 		let mut grps: Vec<GroupeLine> = groupes.groupes().filter_map(|g| {
-			g.desc_for(membre.id).map(|d| GroupeLine { 
-				id: g.id, 
-				desc: d, 
-				_sg: g.get_sous_groupe_for(membre.id).map(|sg| sg.disc) 
-			})
+			g.get_key_for(membre.id).map(|key| GroupeLine { id: g.id, key })
 		}).collect();
-		grps.sort_by(|a, b| a.desc.cmp(&b.desc));
+		grps.sort_by(|a, b| a.key.cmp(&b.key));
 		let title = Line::from(format!(" {}, {} ", membre.nom, membre.prenom).white().bold());
-		Ok(Self {
+		let mut s = Self {
 			view_general: ViewGeneral::try_new(membre, compte.as_ref(), &grps)?,
 			view_fiche_sante: ViewFicheSante::try_new(membre, compte.as_ref(), &grps)?,
 			view_groupes: ViewGroupes::try_new(membre, compte.as_ref(), &grps)?,
@@ -619,7 +620,9 @@ impl PageMembre {
 			sel_view: PageMembreView::General,
 			title,
 			cid: compte.map(|c| c.id),
-		})
+		};
+		s.view_groupes.fit_widths();
+		Ok(s)
 	}
 	fn build_membre(&self, membre: &mut Membre, mut compte: Option<&mut Compte>) {
 		self.view_general.build_membre(membre, &mut compte);
@@ -724,17 +727,26 @@ impl Screen for PageMembre {
 		let membre = membres.get(self.mid).expect("Membre Inexistant");
 		let compte = self.cid.map(|cid| comptes.get(cid).expect("Compte Inexistant"));
 		let mut grps: Vec<GroupeLine> = groupes.groupes().filter_map(|g| {
-			g.desc_for(membre.id).map(|d| GroupeLine { 
-				id: g.id, 
-				desc: d, 
-				_sg: g.get_sous_groupe_for(membre.id).map(|sg| sg.disc) 
-			})
+			g.get_key_for(membre.id).map(|key| GroupeLine { id: g.id, key })
 		}).collect();
-		grps.sort_by(|a, b| a.desc.cmp(&b.desc));
+		grps.sort_by(|a, b| a.key.cmp(&b.key));
 		// update the tables with the latest data from the state
 		self.view_general.update(membre, compte);
 		self.view_fiche_sante.update(membre);
 		self.view_groupes.update(&grps);
 	}
 
+}
+
+fn group_key_to_row<'a>(key: &'a GroupeKey) -> Row<'a> {
+	Row::new(vec![
+		Line::from(key.saison.as_deref().unwrap_or("")),
+		Line::from(key.activite.as_deref().unwrap_or("")),
+		Line::from(key.site.as_deref().unwrap_or("")),
+		Line::from(key.category.as_deref().unwrap_or("")),
+		Line::from(key.semaine.as_deref().unwrap_or("")),
+		Line::from(key.discriminant.as_deref().unwrap_or("")),
+		Line::from(key.sous_groupe.as_ref().map(u32::to_string).unwrap_or_default()),
+		Line::default(), // extra line to fill space
+	])
 }

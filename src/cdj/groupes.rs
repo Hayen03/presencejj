@@ -19,6 +19,17 @@ lazy_static!{
     pub static ref NULL_GROUPE: Groupe = Groupe::default();
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GroupeKey {
+    pub saison: O<String>,
+    pub site: O<String>,
+    pub category: O<String>,
+    pub discriminant: O<String>,
+    pub semaine: O<String>,
+    pub activite: O<String>,
+    pub sous_groupe: O<u32>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum SousGroupeError {
     MembreInexistant(MembreID),
@@ -233,6 +244,22 @@ impl Groupe {
                 String::new()
             };
             Some(format!("{}{}", base, sg))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_key_for(&self, m: MembreID) -> Option<GroupeKey> {
+        if self.participants.contains(&m) {
+            Some(GroupeKey {
+                saison: self.saison.clone(),
+                site: self.site.clone(),
+                category: self.category.clone(),
+                discriminant: self.discriminant.clone(),
+                semaine: self.semaine.clone(),
+                activite: self.activite.clone(),
+                sous_groupe: self.get_sous_groupe_for(m).map(|sg| sg.disc),
+            })
         } else {
             None
         }
