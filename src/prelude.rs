@@ -272,3 +272,84 @@ impl<'a> AsStr<'a, 'a> for String {
 		String::as_str(self)
 	}
 }
+
+#[cfg(windows)]
+pub fn with_stderr_silenced<T>(f: impl FnOnce() -> T) -> T {
+    use std::fs::OpenOptions;
+    use std::os::windows::io::AsRawHandle;
+
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, 
+		DuplicateHandle,
+		HANDLE, 
+		INVALID_HANDLE_VALUE,
+		DUPLICATE_SAME_ACCESS,
+    };
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, SetStdHandle, STD_ERROR_HANDLE,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    unsafe {
+        let current_process = GetCurrentProcess();
+        let stderr = GetStdHandle(STD_ERROR_HANDLE);
+
+        if stderr.is_null() || stderr == INVALID_HANDLE_VALUE {
+            return f();
+        }
+
+        let mut saved_stderr: HANDLE = std::ptr::null_mut();
+        let duplicated = DuplicateHandle(
+            current_process,
+            stderr,
+            current_process,
+            &mut saved_stderr,
+            0,
+            1,
+            DUPLICATE_SAME_ACCESS,
+        );
+
+        if duplicated == 0 {
+            return f();
+        }
+
+        let nul = match OpenOptions::new().write(true).open("NUL") {
+            Ok(file) => file,
+            Err(_) => {
+                CloseHandle(saved_stderr);
+                return f();
+            }
+        };
+
+        let nul_handle = nul.as_raw_handle() as HANDLE;
+
+        if SetStdHandle(STD_ERROR_HANDLE, nul_handle) == 0 {
+            CloseHandle(saved_stderr);
+            return f();
+        }
+
+        struct RestoreStderr {
+            saved: HANDLE,
+        }
+
+        impl Drop for RestoreStderr {
+            fn drop(&mut self) {
+                unsafe {
+                    SetStdHandle(STD_ERROR_HANDLE, self.saved);
+                    CloseHandle(self.saved);
+                }
+            }
+        }
+
+        let _restore = RestoreStderr {
+            saved: saved_stderr,
+        };
+
+        f()
+    }
+}
+
+#[cfg(not(windows))]
+fn with_stderr_silenced<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}

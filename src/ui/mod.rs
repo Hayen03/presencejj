@@ -3,7 +3,7 @@ use std::{any::Any, collections::VecDeque, fmt::Debug, path::PathBuf, sync::{Arc
 use ratatui::text::{Line, Text};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::{RegError, comptes::{Compte, CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeID, GroupeReg, NULL_GROUPE}, membres::{Membre, MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
+use crate::{cdj::{RegError, comptes::{Compte, CompteErr, CompteID, CompteReg, NULL_COMPTE}, groupes::{Groupe, GroupeID, GroupeReg, NULL_GROUPE}, membres::{Membre, MembreID, MembreReg, NULL_MEMBRE}}, extract::ExtractError, prelude::with_stderr_silenced, ui::{actions::UpdateActions, event::Event, screens::{Menu, MenuItem}}};
 
 pub mod app;
 pub mod tui;
@@ -291,54 +291,64 @@ impl Default for AppState {
 }
 impl AppState {
 	pub fn get_out_dir(&self, title: &str) -> Option<PathBuf> {
-        let mut old_dir = self.old_out_dir.write().unwrap();
-        let new_dir = rfd::FileDialog::new()
-            .set_title(title)
-            .set_directory(old_dir.as_path())
-            .pick_folder();
-        new_dir.as_ref()?;
-        let new_dir = new_dir.unwrap();
-        let path = new_dir.to_str().unwrap().to_string();
-        let dir = new_dir.parent().map(|p| p.to_str().unwrap().to_string()).unwrap_or("/".into()).into();
-        //println!("{}", dir);
-        *old_dir = dir;
-        Some(path.into())
+		with_stderr_silenced(|| {
+			let mut old_dir = self.old_out_dir.write().unwrap();
+			let new_dir = rfd::FileDialog::new()
+				.set_title(title)
+				.set_directory(old_dir.as_path())
+				.pick_folder();
+			new_dir.as_ref()?;
+			let new_dir = new_dir.unwrap();
+			let path = new_dir.to_str().unwrap().to_string();
+			let dir = new_dir.parent().map(|p| p.to_str().unwrap().to_string()).unwrap_or("/".into()).into();
+			//println!("{}", dir);
+			*old_dir = dir;
+			Some(path.into())
+		})
     }
 	pub fn get_in_xlsx(&self, title: &str) -> Option<PathBuf> {
-        let old_dir = self.old_out_dir.read().unwrap();
-        let file = rfd::FileDialog::new()
-            .set_title(title)
-            .set_directory(old_dir.as_path())
-            .add_filter("xlsx", &["xlsx"])
-			.pick_file();
-        file
+		with_stderr_silenced(|| {
+			let old_dir = self.old_out_dir.read().unwrap();
+			let file = rfd::FileDialog::new()
+				.set_title(title)
+				.set_directory(old_dir.as_path())
+				.add_filter("xlsx", &["xlsx"])
+				.pick_file();
+			file
+		})
     }
     pub fn get_out_xlsx(&self, title: &str) -> Option<PathBuf> {
-        let old_dir = self.old_out_dir.read().unwrap();
-        let file = rfd::FileDialog::new()
-            .set_title(title)
-            .set_directory(old_dir.as_path())
-            .add_filter("xlsx", &["xlsx"])
-			.save_file();
-        file
+		with_stderr_silenced(|| {
+			let old_dir = self.old_out_dir.read().unwrap();
+			let file = rfd::FileDialog::new()
+				.set_title(title)
+				.set_directory(old_dir.as_path())
+				.add_filter("xlsx", &["xlsx"])
+				.save_file();
+			file
+		})
     }
 	pub fn get_in_pres(&self, title: &str) -> Option<PathBuf> {
-        let old_dir = self.old_out_dir.read().unwrap();
-        let file = rfd::FileDialog::new()
-            .set_title(title)
-            .set_directory(old_dir.as_path())
-            .add_filter("pres", &["pres"])
-			.pick_file();
-        file
+		with_stderr_silenced(|| {
+			let old_dir = self.old_out_dir.read().unwrap();
+			let file = rfd::FileDialog::new()
+				.set_title(title)
+				.set_directory(old_dir.as_path())
+				.add_filter("pres", &["pres"])
+				.pick_file();
+			file
+		})
     }
 	pub fn get_out_pres(&self, title: &str) -> Option<PathBuf> {
-        let old_dir = self.old_out_dir.read().unwrap();
-        let file = rfd::FileDialog::new()
-            .set_title(title)
-            .set_directory(old_dir.as_path())
-            .add_filter("pres", &["pres"])
-			.save_file();
-        file
+		with_stderr_silenced(|| {
+			let old_dir = self.old_out_dir.read().unwrap();
+			let file = rfd::FileDialog::new()
+				.set_title(title)
+				.set_directory(old_dir.as_path())
+				.add_filter("pres", &["pres"])
+				.save_file();
+			file
+		})
     }
 }
 
