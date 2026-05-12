@@ -264,6 +264,40 @@ impl Groupe {
             None
         }
     }
+    /**
+     * Change le sous groupe d'un membre. Si le membre n'est pas dans le groupe, retourne une erreur. Si le nouveau sous-groupe n'existe pas, il est créé. Si le nouveau sous-groupe est None, le membre est retiré de son ancien sous-groupe (s'il en avait un) et n'est ajouté à aucun autre.
+     */
+    pub fn change_subgroup_for(&mut self, mid: MembreID, new_sg: Option<u32>) -> Result<Option<u32>, SousGroupeError> {
+        if !self.participants.contains(&mid) {
+            return Err(SousGroupeError::MembreInexistant(mid));
+        }
+        let old_sg = self.get_sous_groupe_for(mid).map(|sg| sg.disc);
+        // retirer le membre de son ancien sous-groupe
+        if let Some(old_disc) = old_sg {
+            if let Some(sg) = self.sous_groupe.iter_mut().find(|sg| sg.disc == old_disc) {
+                sg.participants.remove(&mid);
+            }
+        }
+        // ajouter le membre à son nouveau sous-groupe
+        if let Some(new_disc) = new_sg {
+            if let Some(sg) = self.sous_groupe.iter_mut().find(|sg| sg.disc == new_disc) {
+                sg.participants.insert(mid);
+                Ok(Some(new_disc))
+            } else { // créer un nouveau sous-groupe
+                let disc = self.sous_groupe.iter().map(|sg| sg.disc).max().unwrap_or(0) + 1;
+                let mut sg = SousGroupe {
+                    disc,
+                    groupe: self.id,
+                    ..Default::default()
+                };
+                sg.participants.insert(mid);
+                self.sous_groupe.push(sg);
+                Ok(Some(disc))
+            }
+        } else { // on le met dans aucun sous-groupe
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

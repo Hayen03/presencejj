@@ -3,7 +3,7 @@ use std::{cell::Cell, sync::{Arc, RwLock}};
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, text::Line, widgets::{Clear, Paragraph, Row, StatefulWidget, Table, TableState, Widget, WidgetRef, Wrap}};
 
-use crate::{cdj::{comptes::{Compte, CompteID, CompteReg}, groupes::{GroupeID, GroupeKey, GroupeReg}, membres::{Membre, MembreID}}, data::adresse::Adresse, prelude::AsStr, ui::{Screen, UIError, UpdateAction, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, PageError, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
+use crate::{cdj::{comptes::{Compte, CompteID, CompteReg}, groupes::{GroupeID, GroupeKey, GroupeReg}, membres::{Membre, MembreID}}, data::adresse::Adresse, prelude::AsStr, ui::{Screen, UIError, UpdateAction, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, PageError, SousGroupeMenuItem, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
 
 lazy_static!{
 	pub static ref PAGE_MEMBRE_GROUP_TABLE_HEADER: Row<'static> = Row::new(vec![
@@ -523,7 +523,9 @@ impl Screen for ViewGroupes {
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.table_state.read().expect("Poisoned Lock").selected() {
 							let g = self.groupes[sel].clone();
-
+							let gid = g.id;
+							let sg = g.key.sous_groupe;
+							let mid = self._mid;
 							let menu = Menu::new(Box::new([
 								MenuItem {id: "Voir le groupe", action: Box::new(move |state| {
 									Ok(vec![
@@ -532,7 +534,12 @@ impl Screen for ViewGroupes {
 									])
 								})},
 								MenuItem {id: "Changer le membre de sous-groupe", action: Box::new(move |state| {
-									Ok(UpdateAction::Pop.one())
+									let menu = {
+										let groupes = state.groupes.read().expect("Poisoned Lock");
+										let groupe = groupes.get(gid).expect("Groupe should exist");
+										SousGroupeMenuItem::mk_menu(groupe, mid, sg)
+									};
+									Ok(vec![UpdateAction::Pop, UpdateAction::PushSub(Box::new(menu))])
 								})},
 							]));
 

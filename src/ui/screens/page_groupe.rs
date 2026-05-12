@@ -3,7 +3,7 @@ use std::{cell::Cell, collections::HashMap, sync::{Arc, RwLock}};
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Style, Stylize}, text::{Line, Span}, widgets::{Paragraph, Row, StatefulWidget, Table, TableState, Widget, WidgetRef, Wrap}};
 
-use crate::{cdj::{groupes::{Groupe, GroupeID, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}, data::Genre, prelude::Date, ui::{AppState, Screen, UIError, UpdateAction, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
+use crate::{cdj::{groupes::{Groupe, GroupeID, SousGroupe}, membres::{Interet, Membre, MembreID, MembreReg}}, data::Genre, prelude::Date, ui::{AppState, Screen, UIError, UpdateAction, actions::Action, fit_str_width, screens::{Field, FieldBlock, FieldBlockCluster, FieldType, Menu, MenuItem, VIEW_TABLE_BLOCK, VIEW_TABLE_HEADER_BLOCK, stylize_selection}}};
 
 lazy_static!{
 	pub static ref PAGE_GROUPE_MEMBRE_TABLE_HEADERS: Row<'static> = Row::new(vec![
@@ -256,6 +256,7 @@ impl Ord for MembreLine {
 }
 #[derive(Debug)]
 struct MembreView {
+	gid: GroupeID,
 	sg: Option<SousGroupeData>,
 	membres: Vec<MembreLine>,
 	sel: SousGroupeSel,
@@ -263,10 +264,11 @@ struct MembreView {
 	widths: [Constraint; 5],
 }
 impl MembreView {
-	fn new(sg: Option<SousGroupeData>, membres: &[&Membre]) -> Self {
+	fn new(gid: GroupeID, sg: Option<SousGroupeData>, membres: &[&Membre]) -> Self {
 		let mut membres = membres.iter().map(|m| MembreLine::new(m)).collect::<Vec<_>>();
 		membres.sort();
 		Self {
+			gid,
 			sg,
 			membres,
 			sel: SousGroupeSel::None,
@@ -397,13 +399,20 @@ impl Screen for MembreView {
 							SousGroupeSel::Membres(idx) => {
 								if let Some(membre) = self.membres.get(idx) {
 									let mid = membre.id;
-									let menu = Menu::new(Box::new([
+									let gid = self.gid;
+									let sg = self.sg.as_ref().map(|sg| sg.id);
+									let menu: Menu<'static, &'static str> = Menu::new(Box::new([
 										MenuItem {id: "Voir le membre", action: Box::new(move |state| {
 											Ok(vec![UpdateAction::Pop, UpdateAction::OpenMembre(mid)])
 										})},
 										MenuItem {id: "Changer de sous-groupe", action: Box::new(move |state| {
-											// todo! show a menu of sous-groupes to move the member to, then move the member to the selected sous-groupe
-											Ok(UpdateAction::Pop.one())
+											let menu: Menu<'static, SousGroupeMenuItem> = {
+												let groupes = state.groupes.read().expect("Poisoned Lock");
+												let groupe = groupes.get(gid).expect("Groupe not found");
+												let current_sg = sg;
+												SousGroupeMenuItem::mk_menu(groupe, mid, current_sg)
+											};
+											Ok(vec![UpdateAction::Pop, UpdateAction::PushSub(Box::new(menu))])
 										})},
 									]));
 									Ok(UpdateAction::PushSub(Box::new(menu)).one())
@@ -583,6 +592,12 @@ impl Screen for PageGroupe {
 			_ => self.get_current_view_mut().map_or(Ok(UpdateAction::Continue.one()), |view| view.handle_event(event, state)),
 		}
 	}
+	fn on_refocus(&mut self, state: Arc<AppState>) {
+		let groupes = state.groupes.read().expect("Poisoned Lock");
+		let membres = state.membres.read().expect("Poisoned Lock");
+		let groupe = groupes.get(self.gid).expect("Groupe not found");
+		let _ = self.update(groupe, &membres);
+	}
 }
 
 fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, MembreView>, UIError> {
@@ -600,7 +615,7 @@ fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, Me
 			}
 		}
 		let sg_data = SousGroupeData::new(id, profil, animateur);
-		let mut view = MembreView::new(Some(sg_data), &mbrs);
+		let mut view = MembreView::new(groupe.id, Some(sg_data), &mbrs);
 		view.fit_widths();
 		membre_views.insert(Some(id), view);
 	}
@@ -610,7 +625,7 @@ fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, Me
 			let m = membres.get(*mid)?;
 			mbrs.push(m);
 		}
-		let mut view = MembreView::new(None, &mbrs);
+		let mut view = MembreView::new(groupe.id, None, &mbrs);
 		view.fit_widths();
 		membre_views.insert(None, view);
 	}
@@ -624,4 +639,71 @@ fn mk_tabs(sous_groupes: &HashMap<Option<u32>, MembreView>) -> Vec<PageGroupeVie
 	].concat();
 	tabs.sort();
 	tabs
+}
+
+#[derive(Debug, Clone)]
+pub struct SousGroupeMenuItem {
+	pub gid: GroupeID,
+	pub mid: MembreID,
+	pub sg: Option<u32>,
+	pub label: String,
+}
+impl std::fmt::Display for SousGroupeMenuItem {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.label.fmt(f)
+	}
+}
+impl SousGroupeMenuItem {
+	pub fn new(gid: GroupeID, mid: MembreID, sg: Option<u32>) -> Self {
+		let label = if let Some(sg) = sg {
+			format!("Sous-groupe {sg}")
+		} else {
+			"Aucun".into()
+		};
+		Self {
+			gid,
+			mid,
+			sg,
+			label,
+		}
+	}
+	pub fn with_label(mut self, label: String) -> Self {
+		self.label = label;
+		self
+	}
+	pub fn mk_action(&self) -> Box<Action> {
+		let gid = self.gid;
+		let sg = self.sg;
+		let mid = self.mid;
+		Box::new(move |state| {
+			let mut groupes = state.groupes.write().expect("Poisoned Lock");
+			let groupe = groupes.get_mut(gid).expect("Groupe not found");
+			let _ = groupe.change_subgroup_for(mid, sg);
+
+			Ok(UpdateAction::Pop.one())
+		})
+	}
+
+	pub fn mk_menu(groupe: &Groupe, mid: MembreID, current_sg: Option<u32>) -> Menu<'static, SousGroupeMenuItem> {
+		let mut items = vec![];
+		if current_sg.is_some() {
+			items.push(SousGroupeMenuItem::new(groupe.id, mid, None));
+		}
+		for sg in groupe.sous_groupe.iter() {
+			if Some(sg.disc) != current_sg {
+				items.push(SousGroupeMenuItem::new(groupe.id, mid, Some(sg.disc)));
+			}
+		}
+		let max_sg = groupe.sous_groupe.iter().map(|sg| sg.disc).max().unwrap_or(0);
+		let nouveau_mi = SousGroupeMenuItem::new(groupe.id, mid, Some(max_sg + 1)).with_label("Nouveau".into());
+		items.push(nouveau_mi);
+		let items = items.into_iter().map(|mi| {
+			let action = mi.mk_action();
+			MenuItem {
+				id: mi,
+				action,
+			}
+		}).collect();
+		Menu::new(items)
+	}
 }
