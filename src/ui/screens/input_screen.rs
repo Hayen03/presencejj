@@ -1,10 +1,10 @@
-use std::sync::{Arc, RwLock};
+use std::{fmt::Debug, sync::{Arc, RwLock}};
 
 use lazy_static::lazy_static;
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
-use ratatui_textarea::{Input, Key, TextArea};
+use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
+use ratatui_textarea::{CursorMove, Input, Key, TextArea};
 
-use crate::{data::BoolJustifie, ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, line_width, screens::ENTER_ESC_INSTRUCTIONS, str_width}};
+use crate::{data::{BoolJustifie, adresse::{Adresse, CodePostal, Pays, Province, Ville}}, ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, line_width, screens::ENTER_ESC_INSTRUCTIONS, str_width}};
 
 pub type TextInputValidation = Arc<dyn (Fn(&str) -> bool) + Send + Sync>;
 pub type InputAfterResult = Result<UpdateActions, UIError>;
@@ -27,6 +27,11 @@ lazy_static!{
 	pub static ref INPUT_INVALID_STYLE: Style = Style::new().red();
 
 	pub static ref BOOL_JUSTIFIE_INPUT_BLOCK: Block<'static> = Block::bordered()
+		.border_set(border::THICK)
+		.border_style(Style::new().white())
+		.title_bottom(ENTER_ESC_INSTRUCTIONS.clone())
+		.bg(Color::Black);
+	pub static ref ADDRESS_INPUT_BLOCK: Block<'static> = Block::bordered()
 		.border_set(border::THICK)
 		.border_style(Style::new().white())
 		.title_bottom(ENTER_ESC_INSTRUCTIONS.clone())
@@ -433,5 +438,377 @@ impl Screen for BoolJustifieInputScreen {
 			},
 			_ => Ok(UpdateAction::Continue.one()),
 		}
+	}
+}
+
+pub type AdresseInputAfter = dyn Fn(Option<Adresse>, Arc<AppState>) -> InputAfterResult + Send + Sync;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdresseField {
+	Numero,
+	Appartement,
+	Rue,
+	CodePostal,
+	Ville,
+	Province,
+	Pays,
+}
+impl AdresseField {
+	const VALUES: [AdresseField; 7] = [
+		AdresseField::Numero,
+		AdresseField::Appartement,
+		AdresseField::Rue,
+		AdresseField::CodePostal,
+		AdresseField::Ville,
+		AdresseField::Province,
+		AdresseField::Pays,
+	];
+	fn label(&self) -> &'static str {
+		match self {
+			Self::Numero => "Numéro",
+			Self::Appartement => "Appartement",
+			Self::Rue => "Rue",
+			Self::CodePostal => "Code Postal",
+			Self::Ville => "Ville",
+			Self::Province => "Province",
+			Self::Pays => "Pays",
+		}
+	}
+	fn next(&self) -> Self {
+		match self {
+			Self::Numero => Self::Appartement,
+			Self::Appartement => Self::Rue,
+			Self::Rue => Self::CodePostal,
+			Self::CodePostal => Self::Ville,
+			Self::Ville => Self::Province,
+			Self::Province => Self::Pays,
+			Self::Pays => Self::Numero,
+		}
+	}
+	fn prev(&self) -> Self {
+		match self {
+			Self::Numero => Self::Pays,
+			Self::Appartement => Self::Numero,
+			Self::Rue => Self::Appartement,
+			Self::CodePostal => Self::Rue,
+			Self::Ville => Self::CodePostal,
+			Self::Province => Self::Ville,
+			Self::Pays => Self::Province,
+		}
+	}
+}
+pub struct AdresseInputScreen {
+	numero: String,
+	rue: String,
+	app: String,
+	code_postal: String,
+	ville: String,
+	pays: String,
+	province: String,
+	textarea: RwLock<TextArea<'static>>,
+	sel: AdresseField,
+	after: Option<Box<AdresseInputAfter>>,
+	size: (ScreenSize, ScreenSize),
+	title: Line<'static>,
+	title_width: u16,
+}
+impl Debug for AdresseInputScreen {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("AdresseInputScreen")
+			.field("numero", &self.numero)
+			.field("rue", &self.rue)
+			.field("appartement", &self.app)
+			.field("code_postal", &self.code_postal)
+			.field("ville", &self.ville)
+			.field("pays", &self.pays)
+			.field("province", &self.province)
+			.field("sel", &self.sel)
+			.field("after", &self.after.is_some())
+			.field("size", &self.size)
+			.field("title", &self.title)
+			.field("title_width", &self.title_width)
+			.finish()
+	}
+}
+impl Default for AdresseInputScreen {
+	fn default() -> Self {
+		let mut textarea = TextArea::default();
+		textarea.set_cursor_style(Style::new().white().on_black().reversed().slow_blink());
+		Self {
+			numero: String::new(),
+			rue: String::new(),
+			app: String::new(),
+			code_postal: String::new(),
+			ville: String::new(),
+			pays: String::new(),
+			province: String::new(),
+			textarea: RwLock::new(textarea),
+			sel: AdresseField::Numero,
+			after: None,
+			size: (ScreenSize::Fit { min: 24, max: u16::MAX }, ScreenSize::Length(2 + AdresseField::VALUES.len() as u16)),
+			title: Line::default(),
+			title_width: 0,
+		}
+	}
+}
+impl WidgetRef for AdresseInputScreen {
+	fn render_ref(&self,area: Rect,buf: &mut Buffer) {
+		let label_par = Paragraph::new(Text::from(AdresseField::VALUES.iter().map(|f| {
+			Line::from(format!("{}: ", f.label())).white().bold()
+		}).collect::<Vec<_>>()));
+		let label_width = label_par.line_width() as u16;
+
+		let prefered_width = (Self::PREFERED_FIELD_WIDTH + label_width + 3).max(self.title_width).max(*INPUT_BLOCK_INSTRUCTION_WIDTH); // 3 for border and gutter
+		let width = self.size.0.resolve(area.width, prefered_width); // 2 for border and 1 for gutter
+		let height = self.size.1.resolve(area.height, 2 + AdresseField::VALUES.len() as u16); // 2 for border
+		let area = area.centered(Constraint::Length(width), Constraint::Length(height));
+		
+
+		let block = ADDRESS_INPUT_BLOCK.clone().title_top(self.title.clone());
+		let inner = block.inner(area);
+		let label_area = Rect {
+			x: inner.x,
+			y: inner.y,
+			width: label_width,
+			height: inner.height,
+		};
+		let field_width = area.width.saturating_sub(label_width).saturating_sub(1);
+
+		Clear.render(area, buf);
+		block.render(area, buf);
+		label_par.render(label_area, buf);
+
+		// render the fields
+		for (i, field) in AdresseField::VALUES.iter().enumerate() {
+			let field_area = Rect {
+				x: inner.x + label_width + 1,
+				y: inner.y + i as u16,
+				width: field_width,
+				height: 1,
+			};
+			if *field == self.sel { // render the text area for the selected field
+				let mut lock = self.textarea.write().expect("Poisoned Lock");
+				let val = lock.lines().join("\n");
+				let style = style_field(*field, val.trim());
+				lock.set_style(style);
+				lock.render(field_area, buf);
+			} else {
+				let val = match field {
+					AdresseField::Numero => &self.numero,
+					AdresseField::Appartement => &self.app,
+					AdresseField::Rue => &self.rue,
+					AdresseField::CodePostal => &self.code_postal,
+					AdresseField::Ville => &self.ville,
+					AdresseField::Pays => &self.pays,
+					AdresseField::Province => &self.province,
+				};
+				let style = style_field(*field, val.trim());
+				let par = Paragraph::new(Text::from(val.as_str()).style(style));
+				par.render(field_area, buf);
+			}
+		}
+
+	}
+}
+
+impl AdresseInputScreen {
+	const PREFERED_FIELD_WIDTH: u16 = 12;
+	pub fn with_title(mut self, title: String) -> Self {
+		let title = Line::from(format!(" {} ", title)).centered().white().bold();
+		let title_width = (line_width(&title) as u16).saturating_add(2);
+		self.title = title;
+		self.title_width = title_width;
+		self
+	}
+	pub fn with_after(mut self, after: Box<AdresseInputAfter>) -> Self {
+		self.after = Some(after);
+		self
+	}
+	pub fn with_value(mut self, adresse: Adresse) -> Self {
+		self.numero = adresse.numero.map(|n| n.to_string()).unwrap_or_default();
+		self.rue = adresse.rue.unwrap_or_default();
+		self.app = adresse.appartement.map(|a| a.to_string()).unwrap_or_default();
+		self.code_postal = adresse.code_postal.map(|c| c.to_string()).unwrap_or_default();
+		self.ville = adresse.ville.map(|v| v.to_string()).unwrap_or_default();
+		self.pays = adresse.pays.map(|p| p.to_string()).unwrap_or_default();
+		self.province = adresse.province.map(|p| p.to_string()).unwrap_or_default();
+		self.update_textarea();
+		self
+	}
+	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
+		self.size = (width, height);
+		self
+	}
+
+	pub fn get_value(&self) -> Option<Adresse> {
+		let numero = if self.sel == AdresseField::Numero {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.numero.clone()
+		};
+		let app = if self.sel == AdresseField::Appartement {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.app.clone()
+		};
+		let rue = if self.sel == AdresseField::Rue {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.rue.clone()
+		};
+		let code_postal = if self.sel == AdresseField::CodePostal {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.code_postal.clone()
+		};
+		let ville = if self.sel == AdresseField::Ville {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.ville.clone()
+		};
+		let pays = if self.sel == AdresseField::Pays {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.pays.clone()
+		};
+		let province = if self.sel == AdresseField::Province {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.province.clone()
+		};
+		let numero = if numero.trim().is_empty() { None } else {
+			match numero.trim().parse::<i32>() {
+				Ok(n) => Some(n),
+				Err(_) => return None, // invalid input
+			}
+		};
+		let app = if app.trim().is_empty() { None } else {
+			match app.trim().parse::<i32>() {
+				Ok(n) => Some(n),
+				Err(_) => return None, // invalid input
+			}
+		};
+		let code_postal = if code_postal.trim().is_empty() { None } else {
+			match code_postal.trim().parse::<CodePostal>() {
+				Ok(c) => Some(c),
+				Err(_) => return None, // invalid input
+			}
+		};
+		let rue = if rue.trim().is_empty() { None } else { Some(rue.trim().to_string()) };
+		let ville = if ville.trim().is_empty() { None } else { Some(Ville::from(ville.trim())) };
+		let pays = if pays.trim().is_empty() { None } else { Some(Pays::from(pays.trim())) };
+		let province = if province.trim().is_empty() { None } else { Some(Province::from(province.trim())) };
+		Some(Adresse {
+			numero,
+			rue,
+			appartement: app,
+			code_postal,
+			ville,
+			pays,
+			province,
+		})
+	}
+
+	fn update_textarea(&self) {
+		let val = match self.sel {
+			AdresseField::Numero => &self.numero,
+			AdresseField::Appartement => &self.app,
+			AdresseField::Rue => &self.rue,
+			AdresseField::CodePostal => &self.code_postal,
+			AdresseField::Ville => &self.ville,
+			AdresseField::Pays => &self.pays,
+			AdresseField::Province => &self.province,
+		};
+		let mut lock = self.textarea.write().expect("Poisoned Lock");
+		lock.clear();
+		lock.insert_str(val);
+		lock.move_cursor(CursorMove::End);
+	}
+	fn record_textarea(&mut self) {
+		let val = self.textarea.read().expect("Poisoned Lock").lines().join("\n");
+		match self.sel {
+			AdresseField::Numero => self.numero = val,
+			AdresseField::Appartement => self.app = val,
+			AdresseField::Rue => self.rue = val,
+			AdresseField::CodePostal => self.code_postal = val,
+			AdresseField::Ville => self.ville = val,
+			AdresseField::Pays => self.pays = val,
+			AdresseField::Province => self.province = val,
+		}
+	}
+	fn next_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.next();
+		self.update_textarea();
+	}
+	fn prev_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.prev();
+		self.update_textarea();
+	}
+}
+impl Screen for AdresseInputScreen {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
+		match event {
+			crate::ui::event::Event::Key(key) => {
+				use crossterm::event as cte;
+				match key.code {
+					cte::KeyCode::Enter => {
+						self.record_textarea();
+						if let Some(after) = self.after.as_deref() {
+							after(self.get_value(), state.clone())
+						} else {
+							Ok(UpdateAction::Pop.one())
+						}
+					},
+					cte::KeyCode::Esc => {
+						Ok(UpdateAction::Pop.one())
+					},
+					cte::KeyCode::Tab => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Up => {
+						self.prev_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Down => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					input => {
+						self.textarea.write().expect("Poisoned Lock").input(Input::from(key));
+						Ok(UpdateAction::Redraw.one())
+					},
+				}
+			},
+			_ => Ok(UpdateAction::Continue.one()),
+		}
+	}
+}
+
+fn style_field(field: AdresseField, value: &str) -> Style {
+	match field {
+		AdresseField::Numero => {
+			if value.parse::<i32>().is_ok() {
+				Style::new().green()
+			} else {
+				Style::new().red()
+			}
+		},
+		AdresseField::Appartement => {
+			if value.parse::<i32>().is_ok() {
+				Style::new().green()
+			} else {
+				Style::new().red()
+			}
+		},
+		AdresseField::CodePostal => {
+			if value.parse::<CodePostal>().is_ok() {
+				Style::new().green()
+			} else {
+				Style::new().red()
+			}
+		},
+		_ => Style::new().gray(),
 	}
 }

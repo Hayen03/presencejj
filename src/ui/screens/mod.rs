@@ -752,7 +752,24 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 			};
 			UpdateAction::PushSub(Box::new(input_screen)).one()
 		},
-		FieldType::Adresse(a) => UpdateAction::Continue.one(),
+		FieldType::Adresse(a) => {
+			let mut input_screen = AdresseInputScreen::default()
+				.with_value(a.clone())
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						lock.value = FieldType::Adresse(input);
+						if let Some(dirty_flag) = &dirty_flag {
+							*dirty_flag.lock().expect("Poisoned Lock") = true;
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
 		FieldType::Tel(t) => {
 			let mut input_screen = LineInputScreen::default()
 				.with_value(t.map(|t| t.to_string()).unwrap_or_default())
