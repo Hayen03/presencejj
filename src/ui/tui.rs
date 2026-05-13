@@ -1,4 +1,5 @@
 
+use crossterm::{event::DisableMouseCapture, execute};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 
 pub type CrosstermTerminal = Terminal<CrosstermBackend<std::io::Stdout>>;
@@ -43,6 +44,7 @@ impl Tui {
 
 		//self.terminal.hide_cursor()?;
 		//self.terminal.clear()?;
+		execute!(std::io::stdout(), DisableMouseCapture)?;
 		let terminal = ratatui::init();
 		let events = EventHandler::new(250);
 		Ok(Self { terminal, events })
@@ -57,6 +59,7 @@ impl Tui {
 	pub fn exit(&mut self) -> Result<(), TuiError> {
 		// end the event loop
 		self.events.end();
+		execute!(std::io::stdout(), DisableMouseCapture)?;
 		ratatui::restore();
 		//Self::reset()?;
 		//self.terminal.show_cursor()?;

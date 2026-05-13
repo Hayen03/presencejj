@@ -290,8 +290,15 @@ impl Default for AppState {
 	}
 }
 impl AppState {
+	fn with_terminal_input_suspended<T>(f: impl FnOnce() -> T) -> T {
+		let _ = crossterm::terminal::disable_raw_mode();
+		let result = f();
+		let _ = crossterm::terminal::enable_raw_mode();
+		result
+	}
+
 	pub fn get_out_dir(&self, title: &str) -> Option<PathBuf> {
-		with_stderr_silenced(|| {
+		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
 			let mut old_dir = self.old_out_dir.write().unwrap();
 			let new_dir = rfd::FileDialog::new()
 				.set_title(title)
@@ -304,10 +311,10 @@ impl AppState {
 			//println!("{}", dir);
 			*old_dir = dir;
 			Some(path.into())
-		})
+		}))
     }
 	pub fn get_in_xlsx(&self, title: &str) -> Option<PathBuf> {
-		with_stderr_silenced(|| {
+		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -315,10 +322,10 @@ impl AppState {
 				.add_filter("xlsx", &["xlsx"])
 				.pick_file();
 			file
-		})
+		}))
     }
     pub fn get_out_xlsx(&self, title: &str) -> Option<PathBuf> {
-		with_stderr_silenced(|| {
+		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -326,10 +333,10 @@ impl AppState {
 				.add_filter("xlsx", &["xlsx"])
 				.save_file();
 			file
-		})
+		}))
     }
 	pub fn get_in_pres(&self, title: &str) -> Option<PathBuf> {
-		with_stderr_silenced(|| {
+		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -337,10 +344,10 @@ impl AppState {
 				.add_filter("pres", &["pres"])
 				.pick_file();
 			file
-		})
+		}))
     }
 	pub fn get_out_pres(&self, title: &str) -> Option<PathBuf> {
-		with_stderr_silenced(|| {
+		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -348,7 +355,7 @@ impl AppState {
 				.add_filter("pres", &["pres"])
 				.save_file();
 			file
-		})
+		}))
     }
 }
 

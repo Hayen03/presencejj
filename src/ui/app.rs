@@ -1,6 +1,6 @@
 use std::{io::Write, sync::Arc};
 
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
+use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
 
 use crate::ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::{ErrorScreen, PageCompte, PageGroupe}, tui::Tui};
 use crate::ui::actions;
@@ -289,6 +289,7 @@ impl App {
 
 impl Widget for &App {
 	fn render(self, area: Rect, buf: &mut Buffer) {
+		buf.set_style(area, Style::new().fg(Color::Gray).bg(Color::Black));
 		let title = Line::from(" Présence JJ ");
 		let block = Block::bordered()
 			.title(title.centered())
