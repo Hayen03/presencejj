@@ -52,3 +52,4 @@ identifier = "ca.hayen.presencejj"
 icon = ["logo.png"]
 short_description = "Divers utilitaires pour Jean-Jeune"
 long_description = "Divers utilitaires pour Jean-Jeune, incluant préparer les sous-groupes ainsi qu'imprimer les listes de présences, fiches santé et statistiques."
+resources = ["launch.scpt"]

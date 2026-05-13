@@ -601,6 +601,7 @@ pub struct FilePollRequest {
 	pub old_dir: Option<PathBuf>,
 }
 impl FilePollRequest {
+	#[cfg(not(target_os = "macos"))]
 	pub fn get_file(self) -> Result<Option<PathBuf>, UIError> {
 		let mut dialog = rfd::FileDialog::new()
 			.set_title(self.data.title);
@@ -619,6 +620,40 @@ impl FilePollRequest {
 			Err(UIError::Runtime { src: Box::new(format!("Failed to send file poll answer: {}", e)) })
 		} else {
 			Ok(file)
+		}
+	}
+	#[cfg(target_os = "macos")]
+	pub fn get_file(self) -> Result<Option<PathBuf>, UIError> {
+		// use osascript instead of rfd on macos because rfd causes a bug where the file dialog opens behind the terminal and the terminal becomes unresponsive until the file dialog is closed, even if the terminal is not focused
+		use std::process::Command;
+		let ex = {
+			if self.data.extensions.is_empty() {
+				None
+			} else {
+				Some(format!("{{{}}}", self.data.extensions.iter().map(String::as_str).chain(std::iter::once("bin")).map(|s| format!("\"{}\"", s)).collect::<Vec<String>>().join(", ")))
+			}
+		};
+		let script = match (self.data.mode, ex) {
+			(FilePollMode::Load, Some(ex)) => format!("POSIX path of (choose file of type {} with prompt \"{}\")", ex, self.data.title),
+			//(FilePollMode::Save, Some(ex)) => format!("POSIX path of (choose file name with prompt \"{}\")", self.data.title),
+			(FilePollMode::Load, None) => format!("POSIX path of (choose file with prompt \"{}\")", self.data.title),
+			(FilePollMode::Save, _) => format!("POSIX path of (choose file name with prompt \"{}\")", self.data.title),
+			(FilePollMode::PickFolder, _) => format!("POSIX path of (choose folder with prompt \"{}\")", self.data.title),
+		};
+		let mut binding = Command::new("osascript");
+  		let cmd = binding
+			.arg("-e")
+			.arg(script);
+		let out = cmd.output().map_err(|e| UIError::Runtime { src: Box::new(format!("Failed to execute osascript: {}", e)) })?;
+		let out = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+		if out.as_os_str().is_empty() {
+			Ok(None)
+		} else {
+			if let Err(e) = self.answer_to.send(Some(out.clone())) {
+				Err(UIError::Runtime { src: Box::new(format!("Failed to send file poll answer: {}", e)) })
+			} else {
+				Ok(Some(out))
+			}
 		}
 	}
 }
