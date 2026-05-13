@@ -350,6 +350,6 @@ pub fn with_stderr_silenced<T>(f: impl FnOnce() -> T) -> T {
 }
 
 #[cfg(not(windows))]
-fn with_stderr_silenced<T>(f: impl FnOnce() -> T) -> T {
+pub fn with_stderr_silenced<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
