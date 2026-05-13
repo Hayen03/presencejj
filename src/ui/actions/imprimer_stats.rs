@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::{HorizontalAlignment, Rect}, style::{Color
 use ratatui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, FillStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, StatsToExcel, UniqueStats, VilleStats, get_unique_stats}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::Desc}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, FillStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, StatsToExcel, UniqueStats, VilleStats, get_unique_stats}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::{Desc, VIEW_TABLE_HEADER_BLOCK}}};
 use crossterm::event as cte;
 
 static QUERY_COL_GUTTER: u16 = 1;
@@ -230,7 +230,7 @@ impl<T> Query<T> where T: Default + ToString {
 }
 
 #[derive(Debug, Default)]
-enum Step<'a> {
+enum Step {
 	#[default]
 	Start,
 	Work,
@@ -248,12 +248,9 @@ enum Step<'a> {
 	Print,
 	Done {
 		result: Box<StatsResult>,
-		text: Text<'a>,
-		scroll: usize,
-		current_max_scroll: Cell<Option<usize>>,
 	},
 }
-impl<'a> Step<'a> {
+impl Step {
 	fn is_completed(&self) -> bool {
 		match self {
 			Self::QueryAnnulation { query, .. } | Self::QueryAttente { query, .. } | Self::QueryCap { query, .. } => query.completed,
@@ -277,27 +274,29 @@ struct StatsResult {
 	#[allow(dead_code)]
 	gstats: HashMap<GroupeID, GroupeStats>,
 	ustats: UniqueStats,
+	#[allow(dead_code)]
 	status: bool,
 	print_err: Option<StatsError>,
 }
 
 #[derive(Debug, Default)]
-struct StatsScreen<'a> {
+struct StatsScreen {
 	thread: Option<std::thread::JoinHandle<Result<StatsResult, UIError>>>,
 	input: RwLock<TextArea<'static>>,
-	step: Arc<Mutex<Step<'a>>>,
+	step: Arc<Mutex<Step>>,
 	signal: Arc<Condvar>,
 	new_query_flag: Arc<Mutex<bool>>,
 	cancel_hook: Arc<Mutex<bool>>,
 	progress_hook: Arc<Mutex<u32>>,
 	previous_progress: Cell<u32>,
+	page: Option<Page>,
 }
-impl<'a> StatsScreen<'a> {
+impl StatsScreen {
 	fn with_thread(mut self, thread: std::thread::JoinHandle<Result<StatsResult, UIError>>) -> Self {
 		self.thread = Some(thread);
 		self
 	}
-	fn get_step(&self) -> Arc<Mutex<Step<'a>>> {
+	fn get_step(&self) -> Arc<Mutex<Step>> {
 		self.step.clone()
 	}
 	fn get_signal(&self) -> Arc<Condvar> {
@@ -326,7 +325,7 @@ impl<'a> StatsScreen<'a> {
 		}
 	}
 }
-impl<'a> WidgetRef for StatsScreen<'a> {
+impl WidgetRef for StatsScreen {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 		self.sync_query_first_input();
 
@@ -342,17 +341,19 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 			Step::QueryAttente { query } => {
 				show_query(" Entrez les Nombres de Participants en Attente ", query, &self.input, block, area, buf);
 			},
-			Step::Done { text, scroll, current_max_scroll, .. } => {
-				let block = block
-					.title_top(STATS_SCREEN_DEFAULT_TITLE.clone())
-					.title_bottom(STATS_SCREEN_INSTRUCTIONS.clone());
-				let inner = block.inner(area);
-				block.render(area, buf);
-				let p = Paragraph::new(text.clone()).wrap(Wrap { trim: false });
-				let h = p.line_count(inner.width);
-				let max_scroll = h.saturating_sub(inner.height as usize);
-				current_max_scroll.set(Some(max_scroll));
-				p.scroll((*scroll.min(&max_scroll) as u16, 0)).render(inner, buf);
+			Step::Done { result } => {
+				if let Some(view) = &self.page {
+					view.render_ref(area, buf);
+				} else {
+					let block = block
+						.title_top(STATS_SCREEN_DEFAULT_TITLE.clone())
+						.title_bottom(STATS_SCREEN_INSTRUCTIONS.clone());
+					let inner = block.inner(area);
+					block.render(area, buf);
+					Paragraph::new("Génération des statistiques terminée!")
+						.wrap(Wrap{trim: false})
+						.render(inner, buf);
+				}
 			},
 			_ => {
 				// show loading screen
@@ -371,7 +372,7 @@ impl<'a> WidgetRef for StatsScreen<'a> {
 		self.previous_progress.set(*self.progress_hook.lock().expect("Poisoned Lock"));
 	}
 }
-impl<'a> Screen for StatsScreen<'a> {
+impl Screen for StatsScreen {
 	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
 		self.sync_query_first_input();
 
@@ -410,25 +411,13 @@ impl<'a> Screen for StatsScreen<'a> {
 				}
 				handle_query(query, self.signal.clone(), &mut self.input.write().expect("Poisoned Lock"), event, current_progress, previous_progress)
 			},
-			Step::Done { result, scroll, current_max_scroll, .. } => {
+			Step::Done { result } => {
 				match event {
 					crate::ui::event::Event::Key(key) => {
-						match key.code {
-							cte::KeyCode::Esc | cte::KeyCode::Enter => {
-								// close the screen
-								Ok(UpdateAction::Pop.one())
-							},
-							cte::KeyCode::Up => {
-								// scroll up
-								*scroll = scroll.saturating_sub(1).min(current_max_scroll.get().unwrap_or(0));
-								Ok(UpdateAction::Redraw.one())
-							},
-							cte::KeyCode::Down => {
-								// scroll down
-								*scroll = scroll.saturating_add(1).min(current_max_scroll.get().unwrap_or(0));
-								Ok(UpdateAction::Redraw.one())
-							},
-							_ => Ok(UpdateAction::Continue.one()),
+						if let Some(view) = &mut self.page {
+							view.handle_event(event, state)
+						} else {
+							Ok(UpdateAction::Continue.one())
 						}
 					},
 					crate::ui::event::Event::Tick => {
@@ -460,8 +449,9 @@ impl<'a> Screen for StatsScreen<'a> {
 								Ok(vec![UpdateAction::Pop, UpdateAction::ErrorPopUp(Box::new(err))])
 							},
 							Ok(Ok(result)) => { // thread completed successfully
-								let text = make_text(&result);
-								*step = Step::Done { result: Box::new(result), text, scroll: 0, current_max_scroll: Cell::new(None) };
+								let page = Page::new(&result);
+								*step = Step::Done { result: Box::new(result) };
+								let _ = self.page.insert(page);
 								Ok(UpdateAction::Redraw.one())
 							},
 						}
@@ -695,6 +685,7 @@ fn new_input<'a>(starting_text: &str) -> TextArea<'a> {
 	input
 }
 
+#[allow(dead_code)]
 fn make_text<'a>(result: &StatsResult) -> Text<'a> {
 	let mut text = Text::default();
 
@@ -720,7 +711,7 @@ fn mk_unique_stats(text: &mut Text, ustats: &UniqueStats) {
 		Span::from(ustats.sems.len().to_string()),
 	]));
 	text.push_line(Line::from(vec![
-		Span::from("Inscriptions Totale: ").bold().light_blue(),
+		Span::from("Enfants Uniques: ").bold().light_blue(),
 		Span::from(ustats.total.to_string()),
 	]));
 	text.push_line(Line::from("Participants Total Par Groupe d'Âge: ").bold().blue());
@@ -833,4 +824,174 @@ fn mk_sem_stats(text: &mut Text, sem: &str, stats: &SemStats) {
 		stats.liste_attente.to_string().into(),
 		")".white(),
 	]));
+}
+
+#[derive(Debug)]
+struct View {
+	text: Text<'static>,
+	scroll: Cell<u16>,
+}
+impl View {
+	fn general(stats: &Stats, ustats: &UniqueStats, status: bool) -> Self {
+		let mut text = Text::default();
+		mk_unique_stats(&mut text, ustats);
+		text.push_line(Line::default());
+		mk_ville_stats(&mut text, &stats.villes);
+
+		text.push_line(Line::default());
+		if status {
+			text.push_line(Line::from("Le fichier a été enregistré!").green());
+		} else {
+			text.push_line(Line::from("Le fichier n'a pu être enregistré...").red());
+		}
+
+		Self {
+			text,
+			scroll: Cell::new(0),
+		}
+	}
+	fn site(stats: &SiteStats, site: &str) -> Self {
+		let mut text = Text::default();
+		mk_site_stats_inner(&mut text, site, stats);
+		Self {
+			text,
+			scroll: Cell::new(0),
+		}
+	}
+	fn reset(&mut self) {
+		self.scroll.set(0);
+	}
+}
+impl WidgetRef for View {
+	fn render_ref(&self,area: Rect,buf: &mut Buffer) {
+		let par = Paragraph::new(self.text.clone()).wrap(Wrap { trim: false });
+		let h = par.line_count(area.width);
+		let max_scroll = h.saturating_sub(area.height as usize);
+		let scroll = self.scroll.get().min(max_scroll as u16);
+		par.scroll((scroll, 0)).render(area, buf);
+		self.scroll.set(scroll);
+	}
+}
+impl Screen for View {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
+		match event {
+			crate::ui::event::Event::Key(key) => {
+				use crossterm::event as cte;
+				match key.code {
+					cte::KeyCode::Esc => {
+						// close the screen
+						Ok(UpdateAction::Pop.one())
+					},
+					cte::KeyCode::Up => {
+						// scroll up
+						self.scroll.set(self.scroll.get().saturating_sub(1));
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Down => {
+						// scroll down
+						self.scroll.set(self.scroll.get().saturating_add(1));
+						Ok(UpdateAction::Redraw.one())
+					},
+					_ => Ok(UpdateAction::Continue.one()),
+				}
+			},
+			_ => Ok(UpdateAction::Continue.one()),
+		}
+	}
+}
+
+#[derive(Debug)]
+struct Tab {
+	label: String,
+	view: View,
+}
+
+#[derive(Debug)]
+struct Page {
+	tabs: Vec<Tab>,
+	current_tab: usize,
+}
+impl Page {
+	fn new(result: &StatsResult) -> Self {
+		let mut tabs = vec![
+			Tab {
+				label: "Général".into(),
+				view: View::general(&result.stats, &result.ustats, result.status),
+			}
+		];
+		let mut sites = result.stats.sites.keys().cloned().collect::<Vec<_>>();
+		sites.sort();
+		for site in sites {
+			if let Some(sstats) = result.stats.sites.get(&site) {
+				tabs.push(Tab {
+					label: site.clone(),
+					view: View::site(sstats, &site),
+				});
+			}
+		}
+		// total
+		tabs.push(Tab {
+			label: "Total".into(),
+			view: View::site(&result.stats.total(), "Total"),
+		});
+		Self {
+			tabs,
+			current_tab: 0,
+		}
+	}
+
+	fn stylize_tab<'a>(label: &'a str, selected: &str) -> Span<'a> {
+		if label == selected {
+			Span::from(label).light_blue().bold().on_dark_gray()
+		} else {
+			Span::from(label).white()
+		}
+	}
+}
+impl WidgetRef for Page {
+	fn render_ref(&self,area: Rect,buf: &mut Buffer) {
+		let block = STATS_SCREEN_BLOCK.clone();
+		let inner = block.inner(area);
+
+		let label_block = VIEW_TABLE_HEADER_BLOCK.clone();
+		let tabs = self.tabs.iter().map(|t| Self::stylize_tab(&t.label, &self.tabs[self.current_tab].label)).intersperse(Span::from(" | ").gray()).collect::<Vec<_>>();
+		let tabs = Line::from(tabs).centered();
+		let tabs = Paragraph::new(tabs).block(label_block);
+		let label_area = Rect {
+			x: inner.x,
+			y: inner.y,
+			width: inner.width,
+			height: 2,
+		};
+
+		Clear.render(area, buf);
+		block.render(area, buf);
+		tabs.render(label_area, buf);
+		let view_area = Rect {
+			x: inner.x,
+			y: inner.y + label_area.height,
+			width: inner.width,
+			height: inner.height.saturating_sub(label_area.height),
+		};
+		self.tabs[self.current_tab].view.render_ref(view_area, buf);
+	}
+}
+impl Screen for Page {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<super::UpdateActions, UIError> {
+		match event {
+			crate::ui::event::Event::Key(key) => {
+				use crossterm::event as cte;
+				match key.code {
+					cte::KeyCode::Esc => Ok(UpdateAction::Pop.one()),
+					cte::KeyCode::Tab => {
+						self.current_tab = (self.current_tab + 1) % self.tabs.len();
+						self.tabs[self.current_tab].view.reset();
+						Ok(UpdateAction::Redraw.one())
+					},
+					_ => self.tabs[self.current_tab].view.handle_event(event, state),
+				}
+			},
+			_ => Ok(UpdateAction::Continue.one()),
+		}
+	}
 }

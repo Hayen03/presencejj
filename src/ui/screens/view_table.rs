@@ -180,7 +180,7 @@ impl Screen for ViewTable {
 
 pub fn stylize_selection<'a, 'b, T: PartialEq + AsStr<'b, 'a>>(current: &'a T, target: &'a T) -> Span<'b> {
 	if current == target {
-		target.as_str().light_blue().bold().on_gray()
+		target.as_str().light_blue().bold().on_dark_gray()
 	} else {
 		target.as_str().white()
 	}
