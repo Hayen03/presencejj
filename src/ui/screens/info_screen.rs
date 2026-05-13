@@ -27,7 +27,7 @@ impl<'a> InfoScreen<'a> {
 		let title = Line::from(format!(" {} ", title)).centered().yellow();
 		let title_width = (line_width(&title) as u16).saturating_add(2);
 		let prefered_width = (text.lines.iter().map(|line| line_width(line)).max().unwrap_or(0) as u16).saturating_add(2);
-		InfoScreen { title, text, scroll: 0, size: (ScreenSize::Fill, ScreenSize::Fill), prefered_width, title_width }
+		InfoScreen { title, text, scroll: 0, size: (ScreenSize::Fit { min: 0, max: u16::MAX }, ScreenSize::Fit { min: 0, max: u16::MAX }), prefered_width, title_width }
 	}
 	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
 		self.size = (width, height);

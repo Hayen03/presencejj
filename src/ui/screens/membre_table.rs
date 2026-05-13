@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Clear, Row, StatefulWidget, Table, TableState, Widget, WidgetRef}};
 
-use crate::{cdj::membres::{Membre, MembreID, MembreReg, NULL_MEMBRE}, ui::{Screen, UpdateAction, fit_str_width}};
+use crate::{cdj::{comptes::NULL_COMPTE, membres::{Membre, MembreID, MembreReg, NULL_MEMBRE}}, ui::{Screen, UpdateAction, fit_str_width, screens::{InfoScreen, Menu, MenuItem}}};
 
 lazy_static!{
 	pub static ref MEMBRE_TABLE_HEADERS: Row<'static> = Row::new(vec![
@@ -166,7 +166,32 @@ impl Screen for MembreTable {
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.state.read().expect("Poisoned Lock").selected() {
 							let sel = self.data.get(sel).expect("Selection out of bounds");
-							Ok(UpdateAction::OpenMembre(sel.id).one())
+							let mid1 = sel.id;
+							let mid2 = sel.id;
+							let menu = Menu::new(Box::new([
+								MenuItem {id: "Ouvrir", action: Box::new(move |state| Ok(vec![UpdateAction::Pop, UpdateAction::OpenMembre(mid1)]))},
+								MenuItem {id: "Imprimer Fiche Santé", action: Box::new(move |state| {
+									let out_dir = state.get_out_dir("Sélectionnez le dossier de sortie");
+									if let Some(out_dir) = out_dir {
+										let membres = state.membres.read().expect("Poisoned Lock");
+										let membre = membres.get(mid2)?;
+										let comptes = state.comptes.read().expect("Poisoned Lock");
+										let compte = membre.compte.and_then(|cid| comptes.get(cid).ok()).unwrap_or(&NULL_COMPTE);
+										let groupes_reg = state.groupes.read().expect("Poisoned Lock");
+										let groupes = groupes_reg.groupes().filter(|g| g.participants.contains(&mid2)).collect::<Vec<_>>();
+										let sites = groupes.iter().map(|g| (g.saison.as_deref().unwrap_or("None"), g.site.as_deref().unwrap_or("None"))).collect::<Vec<_>>();
+										let logger = |msg| {}; // just void it for this task, we don't care about the logs
+										let _res = crate::print::typst::print_fiche_med(membre, compte, &state.config.read().expect("Poisoned Lock"), &sites, true, out_dir.to_str(), &logger);
+										if let Err(err) = _res {
+											return Ok(vec![UpdateAction::Pop, UpdateAction::ErrorPopUp(Box::new(err))]);
+										} else {
+											return Ok(vec![UpdateAction::Pop, UpdateAction::PushSub(Box::new(InfoScreen::new("Succès".into(), "Fiche santé imprimée avec succès".into())))]);
+										}
+									}
+									Ok(UpdateAction::Pop.one())
+								})},
+							]));
+							Ok(UpdateAction::PushSub(Box::new(menu)).one())
 						} else {
 							Ok(UpdateAction::Continue.one())
 						}
