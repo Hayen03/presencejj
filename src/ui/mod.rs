@@ -64,6 +64,7 @@ impl From<tui::TuiError> for UIError {
 	fn from(src: tui::TuiError) -> Self {
 		match src {
 			tui::TuiError::IOError { src } => UIError::IO { src },
+			tui::TuiError::Panic { info } => UIError::Runtime { src: info },
 		}
 	}
 }
@@ -290,15 +291,8 @@ impl Default for AppState {
 	}
 }
 impl AppState {
-	fn with_terminal_input_suspended<T>(f: impl FnOnce() -> T) -> T {
-		let _ = crossterm::terminal::disable_raw_mode();
-		let result = f();
-		let _ = crossterm::terminal::enable_raw_mode();
-		result
-	}
-
 	pub fn get_out_dir(&self, title: &str) -> Option<PathBuf> {
-		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
+		with_stderr_silenced(|| {
 			let mut old_dir = self.old_out_dir.write().unwrap();
 			let new_dir = rfd::FileDialog::new()
 				.set_title(title)
@@ -311,10 +305,10 @@ impl AppState {
 			//println!("{}", dir);
 			*old_dir = dir;
 			Some(path.into())
-		}))
+		})
     }
 	pub fn get_in_xlsx(&self, title: &str) -> Option<PathBuf> {
-		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
+		with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -322,10 +316,10 @@ impl AppState {
 				.add_filter("xlsx", &["xlsx"])
 				.pick_file();
 			file
-		}))
+		})
     }
     pub fn get_out_xlsx(&self, title: &str) -> Option<PathBuf> {
-		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
+		with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -333,10 +327,10 @@ impl AppState {
 				.add_filter("xlsx", &["xlsx"])
 				.save_file();
 			file
-		}))
+		})
     }
 	pub fn get_in_pres(&self, title: &str) -> Option<PathBuf> {
-		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
+		with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -344,10 +338,10 @@ impl AppState {
 				.add_filter("pres", &["pres"])
 				.pick_file();
 			file
-		}))
+		})
     }
 	pub fn get_out_pres(&self, title: &str) -> Option<PathBuf> {
-		Self::with_terminal_input_suspended(|| with_stderr_silenced(|| {
+		with_stderr_silenced(|| {
 			let old_dir = self.old_out_dir.read().unwrap();
 			let file = rfd::FileDialog::new()
 				.set_title(title)
@@ -355,7 +349,7 @@ impl AppState {
 				.add_filter("pres", &["pres"])
 				.save_file();
 			file
-		}))
+		})
     }
 }
 
@@ -538,9 +532,96 @@ impl PollMenuRequest {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FilePollMode {
+	Save,
+	Load,
+	PickFolder,
+}
+#[derive(Debug)]
+pub struct FilePoll {
+	title: String,
+	mode: FilePollMode,
+	filter: Option<String>,
+	extensions: Vec<String>,
+}
+impl FilePoll {
+	pub fn save(title: String) -> Self {
+		Self {
+			title,
+			mode: FilePollMode::Save,
+			filter: None,
+			extensions: vec![],
+		}
+	}
+	pub fn load(title: String) -> Self {
+		Self {
+			title,
+			mode: FilePollMode::Load,
+			filter: None,
+			extensions: vec![],
+		}
+	}
+	pub fn pick_folder(title: String) -> Self {
+		Self {
+			title,
+			mode: FilePollMode::PickFolder,
+			filter: None,
+			extensions: vec![],
+		}
+	}
+	pub fn with_filter(mut self, filter: &str, extensions: &[&str]) -> Self {
+		self.filter = Some(filter.to_string());
+		self.extensions = extensions.iter().map(|s| s.to_string()).collect();
+		self
+	}
+
+	pub fn poll(self, state: Arc<AppState>) -> Option<PathBuf> {
+		let (sender, receiver) = std::sync::mpsc::channel::<Option<PathBuf>>();
+		let old_dir = match self.mode {
+			FilePollMode::Save => state.old_out_dir.read().expect("Poisoned Lock").clone(),
+			FilePollMode::Load => state.old_in_dir.read().expect("Poisoned Lock").clone(),
+			FilePollMode::PickFolder => state.old_in_dir.read().expect("Poisoned Lock").clone(),
+		};
+		let request = FilePollRequest {
+			data: self,
+			answer_to: sender,
+			old_dir: Some(old_dir),
+		};
+
+		state.polls.write().expect("Poisoned Lock").push_back(PollRequest::File(request));
+		receiver.recv().ok().flatten()
+	}
+}
+
+#[derive(Debug)]
+pub struct FilePollRequest {
+	pub data: FilePoll,
+	pub answer_to: std::sync::mpsc::Sender<Option<PathBuf>>,
+	pub old_dir: Option<PathBuf>,
+}
+impl FilePollRequest {
+	pub fn get_file(self) {
+		let mut dialog = rfd::FileDialog::new()
+			.set_title(self.data.title);
+		if let Some(old_dir) = self.old_dir {
+			dialog = dialog.set_directory(old_dir);
+		}
+		if let Some(filter) = self.data.filter {
+			dialog = dialog.add_filter(&filter, &self.data.extensions.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+		}
+		let file = match self.data.mode {
+			FilePollMode::Save => dialog.save_file(),
+			FilePollMode::Load => dialog.pick_file(),
+			FilePollMode::PickFolder => dialog.pick_folder(),
+		};
+		let _ = self.answer_to.send(file).is_err();
+	}
+}
 
 #[derive(Debug)]
 pub enum PollRequest {
 	Line(PollLineRequest<'static>),
 	Menu(PollMenuRequest),
+	File(FilePollRequest),
 }

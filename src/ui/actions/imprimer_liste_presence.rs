@@ -1,10 +1,8 @@
 use std::{collections::HashSet, sync::Arc};
 
-use crate::{cdj::groupes::NULL_GROUPE, print::typst::{print_presence_anim, print_presence_sdj}, ui::{AppState, UIError, screens::Desc}};
+use crate::{cdj::groupes::NULL_GROUPE, print::typst::{print_presence_anim, print_presence_sdj}, ui::{AppState, FilePoll, UIError, screens::Desc}};
 
 pub fn imprimer_liste_presence(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
-	let out_dir = state.get_out_dir("Choisissez le dossier de sortie");
-
 	let n_anim = state.groupes.read().expect("Poisoned Lock").groupes().filter(|g| g.id != NULL_GROUPE.id).count() as u32;
 	let n_sdg = {
 		let groupes = state.groupes.read().expect("Poisoned Lock");
@@ -22,7 +20,13 @@ pub fn imprimer_liste_presence(state: Arc<AppState>) -> crate::ui::actions::Acti
 		logger.lock().expect("Poisoned Lock").log(msg);
 	};
 	let thread_handle = std::thread::spawn(move || {
-		let out_dir = out_dir.as_ref().and_then(|p| p.to_str());
+		let out_dir = FilePoll::pick_folder("Sélectionnez le dossier de sortie".into())
+			.poll(state.clone());
+		let out_dir = if let Some(out_dir) = out_dir {
+			out_dir
+		} else {
+			return Err(UIError::CancelAction { desc: String::from("Aucun fichier sélectionné") });
+		};
 
 		// FICHE ANIM
 		{ // block to auto release the lock afterwards
@@ -37,12 +41,12 @@ pub fn imprimer_liste_presence(state: Arc<AppState>) -> crate::ui::actions::Acti
 				let comptes = state.comptes.read().expect("Poisoned Lock");
 				let config = state.config.read().expect("Poisoned Lock");
 				if groupe.sous_groupe.is_empty() {
-					if let Err(err) = print_presence_anim(groupe, None, &membres, &comptes, &config, out_dir, &logger) {
+					if let Err(err) = print_presence_anim(groupe, None, &membres, &comptes, &config, out_dir.to_str(), &logger) {
 						logger(Desc::Error(format!("Erreur lors de l'impression du groupe {}: {}", groupe.desc(), err)));
 					}
 				} else {
 					for sg in &groupe.sous_groupe {
-						if let Err(err) = print_presence_anim(groupe, Some(sg), &membres, &comptes, &config, out_dir, &logger) {
+						if let Err(err) = print_presence_anim(groupe, Some(sg), &membres, &comptes, &config, out_dir.to_str(), &logger) {
 							logger(Desc::Error(format!("Erreur lors de l'impression du groupe {} - {}: {}", groupe.desc(), sg.disc, err)));
 						}
 					}
@@ -68,7 +72,7 @@ pub fn imprimer_liste_presence(state: Arc<AppState>) -> crate::ui::actions::Acti
 				let membres = state.membres.read().expect("Poisoned Lock");
 				let comptes = state.comptes.read().expect("Poisoned Lock");
 				let config = state.config.read().expect("Poisoned Lock");
-				if let Err(err) = print_presence_sdj(&grp, &groupes, &membres, &comptes, &config, out_dir, &logger) {
+				if let Err(err) = print_presence_sdj(&grp, &groupes, &membres, &comptes, &config, out_dir.to_str(), &logger) {
 					logger(Desc::Error(format!("Erreur lors de l'impression du SDG {} - {} - {}: {}", grp.saison.unwrap_or("none"), grp.site.unwrap_or("none"), grp.semaine.unwrap_or("none"), err)));
 				}
 

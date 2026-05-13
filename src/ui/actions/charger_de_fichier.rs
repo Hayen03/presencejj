@@ -3,7 +3,7 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use ratatui::{style::Stylize, text::{Line, Text}};
 
-use crate::ui::{AppState, Screen, UIError, screens::{TaskScreen, TextScreen}, serial::LoadData};
+use crate::ui::{AppState, FilePoll, Screen, UIError, screens::{TaskScreen, TextScreen}, serial::LoadData};
 
 lazy_static!{
 	pub static ref LOAD_SCREEN_TITLE: Line<'static> = Line::from(" Chargement ").centered().white().bold();
@@ -28,7 +28,9 @@ pub fn charger_de_fichier(state: Arc<AppState>) -> crate::ui::actions::ActionRes
 		}
 	};
 	let work_thread = std::thread::spawn(move || {
-		let file = state.get_in_pres("Choisissez le fichier");
+		let file = FilePoll::load("Choisissez le fichier à charger".into())
+			.with_filter("pres", &["pres"])
+			.poll(state.clone());
 		if let Some(file) = file {
 			let bytes = std::fs::read(file);
 			match bytes {

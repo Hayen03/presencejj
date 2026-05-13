@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::{HorizontalAlignment, Rect}, style::{Color
 use ratatui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, FillStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, StatsToExcel, UniqueStats, VilleStats, get_unique_stats}, ui::{AppState, PollMenu, Screen, UIError, UpdateAction, screens::{Desc, VIEW_TABLE_HEADER_BLOCK}}};
+use crate::{cdj::groupes::{Groupe, GroupeID, NULL_GROUPE}, data::stats::{AgeStats, FillStats, GroupeStats, SemStats, SiteStats, Stats, StatsError, StatsToExcel, UniqueStats, VilleStats, get_unique_stats}, ui::{AppState, FilePoll, PollMenu, Screen, UIError, UpdateAction, screens::{Desc, VIEW_TABLE_HEADER_BLOCK}}};
 use crossterm::event as cte;
 
 static QUERY_COL_GUTTER: u16 = 1;
@@ -33,13 +33,6 @@ lazy_static!{
 }
 
 pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
-	let out_file = state.get_out_xlsx("Fichier de sortie");
-	let out_file = if let Some(f) = out_file {
-		f
-	} else {
-		return Ok(UpdateAction::ErrorPopUp(Box::new(UIError::CancelAction { desc: "Aucun Fichier Sélectionné".into() })).one());
-	};
-
 	let screen = StatsScreen::default();
 	let step = screen.get_step();
 	let signal = screen.get_signal();
@@ -48,6 +41,14 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 	let progress_hook = screen.get_progress_hook();
 
 	let thread = std::thread::spawn(move || {
+		let out_file = FilePoll::save("Sélectionnez le fichier de sortie".into())
+			.with_filter("xlsx", &["xlsx"])
+			.poll(state.clone());
+		let out_file = if let Some(out_file) = out_file {
+			out_file
+		} else {
+			return Err(UIError::CancelAction { desc: String::from("Aucun fichier sélectionné") });
+		};
 
 		let descs: HashMap<GroupeID, Arc<str>> = {
 			let groupes = state.groupes.read().expect("Poisoned Lock");

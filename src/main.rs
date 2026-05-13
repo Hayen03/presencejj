@@ -60,6 +60,7 @@ impl From<TuiError> for AppError {
     fn from(value: TuiError) -> Self {
         match value {
             TuiError::IOError { src } => AppError::IOError { src },
+            TuiError::Panic { info } => AppError::Runtime { src: info },
         }
     }
 }

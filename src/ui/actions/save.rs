@@ -3,7 +3,7 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use ratatui::{style::Stylize, text::{Line, Text}};
 
-use crate::ui::{AppState, UIError, screens::{TaskScreen, TextScreen}, serial::SaveData};
+use crate::ui::{AppState, FilePoll, UIError, screens::{TaskScreen, TextScreen}, serial::SaveData};
 
 lazy_static!{
 	pub static ref SAVE_SCREEN_TITLE: Line<'static> = Line::from(" Sauvegarde ").centered().white().bold();
@@ -13,6 +13,7 @@ lazy_static!{
 }
 
 pub fn sauvegarder(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
+
 	let initial_screen = TextScreen::new(SAVE_SCREEN_TITLE.clone(), SAVE_WORK_TEXT.clone());
 	let after = move |val: Option<Result<(), UIError>>| -> Option<Box<dyn crate::ui::Screen>> {
 		match val {
@@ -28,28 +29,32 @@ pub fn sauvegarder(state: Arc<AppState>) -> crate::ui::actions::ActionResult {
 		}
 	};
 	let work_thread = std::thread::spawn(move || {
-		let out = state.get_out_pres("Choisissez le fichier de sortie");
-		if let Some(out) = out {
-			let comptes = state.comptes.read().expect("Poisoned Lock");
-			let membres = state.membres.read().expect("Poisoned Lock");
-			let groupes = state.groupes.read().expect("Poisoned Lock");
-			let save_state = SaveData {comptes: &comptes, membres: &membres, groupes: &groupes };
-			let bytes = postcard::to_allocvec(&save_state);
-			match bytes {
-				Ok(bytes) => {
-					// save to file
-					if let Err(e) = std::fs::write(out, bytes) {
-						Err(UIError::IO { src: e })
-					} else {
-						Ok(())
-					}
-				},
-				Err(e) => {
-					Err(UIError::Others { src: Box::new(e) })
-				},
-			}
+		let out = FilePoll::save("Sélectionnez le fichier de sortie".into())
+			.with_filter("pres", &["pres"])
+			.poll(state.clone());
+		let out = if let Some(out) = out {
+			out
 		} else {
-			Err(UIError::UnexpectedState { desc: "No output file selected".to_string() })
+			return Err(UIError::CancelAction { desc: String::from("Aucun fichier sélectionné") });
+		};
+
+		let comptes = state.comptes.read().expect("Poisoned Lock");
+		let membres = state.membres.read().expect("Poisoned Lock");
+		let groupes = state.groupes.read().expect("Poisoned Lock");
+		let save_state = SaveData {comptes: &comptes, membres: &membres, groupes: &groupes };
+		let bytes = postcard::to_allocvec(&save_state);
+		match bytes {
+			Ok(bytes) => {
+				// save to file
+				if let Err(e) = std::fs::write(out, bytes) {
+					Err(UIError::IO { src: e })
+				} else {
+					Ok(())
+				}
+			},
+			Err(e) => {
+				Err(UIError::Others { src: Box::new(e) })
+			},
 		}
 	});
 	let screen = TaskScreen::new(Box::new(initial_screen), work_thread, Box::new(after));

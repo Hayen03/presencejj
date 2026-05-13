@@ -52,7 +52,7 @@ impl App {
 				self.redraw_requested = false;
 			}
 			let event = terminal.events.next()?;
-			match self.update(event) {
+			match self.update(event, terminal) {
 				Ok(cont) => {
 					if !cont || self.should_quit {
 						return Ok(());
@@ -103,7 +103,7 @@ impl App {
 /**
 * update fn for the main loop. Returns None if the app should continue, or Some(Result<(), UIError>) if the app is done and should return the result.
 */
-	fn update(&mut self, event: Event) -> Result<bool, UIError> {
+	fn update(&mut self, event: Event, term: &mut Tui) -> Result<bool, UIError> {
 		// check for polls first, since they have a higher priority than the current screen
 		if !self.state.polls.read().expect("Poisoned Lock").is_empty() {
 			let mut polls = self.state.polls.write().expect("Poisoned Lock");
@@ -111,6 +111,16 @@ impl App {
 				let screen = match poll {
 					PollRequest::Line(poll) => Box::new(poll.to_line_input_screen()) as Box<dyn Screen>,
 					PollRequest::Menu(poll) => Box::new(poll.into_screen()) as Box<dyn Screen>,
+					PollRequest::File(poll) => {
+						let res = term.suspend_raw_mode(|| {
+							poll.get_file();
+						});
+						if let Err(err) = res {
+							Box::new(ErrorScreen::from_error(Box::new(err)))
+						} else {
+							continue;
+						}
+					},
 				};
 				self.sub_screen_stack.push(screen);
 				self.redraw_requested = true;

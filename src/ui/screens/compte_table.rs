@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use lazy_static::lazy_static;
-use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Clear, Row, StatefulWidget, Table, TableState, Widget, WidgetRef}};
+use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Styled, Stylize}, symbols::border, text::Line, widgets::{Block, Clear, Row, StatefulWidget, Table, TableState, Widget, WidgetRef}};
 
 use crate::{cdj::comptes::{Compte, CompteID, CompteReg, NULL_COMPTE}, ui::{Screen, UpdateAction, fit_str_width}};
 
@@ -141,7 +141,8 @@ impl WidgetRef for CompteTable {
 		let rows = self.data.iter().map(|g| g.to_row());
 		let table = Table::new(rows, &self.width)
 			.header(COMPTE_TABLE_HEADERS.clone())
-			.row_highlight_style(Style::new().white().on_dark_gray());
+			.row_highlight_style(Style::new().white().on_dark_gray())
+			.set_style(Style::new().gray());
 
 		Clear.render(area, buf);
 		// render a black block
