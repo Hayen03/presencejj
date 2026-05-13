@@ -10,6 +10,7 @@ lazy_static!{
 		Line::from("Nom").white().bold(),
 		Line::from("Prenom").white().bold(),
 		Line::from("Naissance").white().bold(),
+		Line::from("Genre").white().bold(),
 		Line::default(), // extra column to fill space
 	]);
 	pub static ref MEMBRE_TABLE_TITLE: Line<'static> = Line::from(" Membres ").white().bold();
@@ -26,6 +27,7 @@ struct MTData {
 	nom: Arc<str>,
 	prenom: Arc<str>,
 	naissance: Arc<str>,
+	genre: &'static str,
 }
 impl From<&Membre> for MTData {
 	fn from(m: &Membre) -> Self {
@@ -37,6 +39,7 @@ impl From<&Membre> for MTData {
 			nom,
 			prenom,
 			naissance,
+			genre: m.genre.map(|g| g.as_str()).unwrap_or(""),
 		}
 	}
 }
@@ -53,6 +56,7 @@ impl MTData {
 			Line::from(self.nom.as_ref()),
 			Line::from(self.prenom.as_ref()),
 			Line::from(self.naissance.as_ref()),
+			Line::from(self.genre),
 			Line::default(), // fill space
 		])
 	}
@@ -77,7 +81,7 @@ impl Ord for MTData {
 #[derive(Debug, Default)]
 pub struct MembreTable {
 	data: Vec<MTData>,
-	width: [Constraint; 4],
+	width: [Constraint; 5],
 	state: RwLock<TableState>, // we actually need the state for smooth scrolling
 }
 impl MembreTable {
@@ -109,7 +113,7 @@ impl MembreTable {
 		}
 	}
 
-	pub fn with_widths(mut self, widths: [Constraint; 3]) -> Self {
+	pub fn with_widths(mut self, widths: [Constraint; 4]) -> Self {
 		let mut it = widths.into_iter().chain(std::iter::once(Constraint::Fill(1)));
 		self.width = std::array::from_fn(|_| it.next().unwrap());
 		self
@@ -118,10 +122,12 @@ impl MembreTable {
 		let nom_w = fit_str_width(self.data.iter().map(|d| d.nom.as_ref()).chain(std::iter::once("Nom")));
 		let prenom_w = fit_str_width(self.data.iter().map(|d| d.prenom.as_ref()).chain(std::iter::once("Prénom")));
 		let naissance_w = fit_str_width(self.data.iter().map(|d| d.naissance.as_ref()).chain(std::iter::once("Naissance")));
+		let genre_w = fit_str_width(self.data.iter().map(|d| d.genre).chain(std::iter::once("Genre")));
 		self.width = [
 			Constraint::Length(nom_w as u16 + 2),
 			Constraint::Length(prenom_w as u16 + 2),
 			Constraint::Length(naissance_w as u16 + 2),
+			Constraint::Length(genre_w as u16 + 2),
 			Constraint::Fill(1),
 		];
 	}

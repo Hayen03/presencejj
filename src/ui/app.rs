@@ -116,6 +116,9 @@ impl App {
 				self.redraw_requested = true;
 			}
 		}
+		if let crate::ui::event::Event::Resize(_a, _b) = event {
+			self.redraw_requested = true;
+		}
 		let events = self.update_current_screen(event)?;
 		for event in events {
 			match self.handle_update_action(event) {
