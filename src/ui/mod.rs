@@ -601,7 +601,7 @@ pub struct FilePollRequest {
 	pub old_dir: Option<PathBuf>,
 }
 impl FilePollRequest {
-	pub fn get_file(self) {
+	pub fn get_file(self) -> Result<Option<PathBuf>, UIError> {
 		let mut dialog = rfd::FileDialog::new()
 			.set_title(self.data.title);
 		if let Some(old_dir) = self.old_dir {
@@ -615,7 +615,11 @@ impl FilePollRequest {
 			FilePollMode::Load => dialog.pick_file(),
 			FilePollMode::PickFolder => dialog.pick_folder(),
 		};
-		let _ = self.answer_to.send(file).is_err();
+		if let Err(e) = self.answer_to.send(file.clone()) {
+			Err(UIError::Runtime { src: Box::new(format!("Failed to send file poll answer: {}", e)) })
+		} else {
+			Ok(file)
+		}
 	}
 }
 

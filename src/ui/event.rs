@@ -34,11 +34,12 @@ pub enum Event {
 pub struct EventHandler {
 	tick_rate: Duration,
 	last_tick: Instant,
+	focused: bool,
 }
 impl EventHandler {
 	pub fn new(tick_rate: u64) -> Self {
 		let tick_rate = Duration::from_millis(tick_rate);
-		Self { tick_rate, last_tick: Instant::now() }
+		Self { tick_rate, last_tick: Instant::now(), focused: true }
 	}
 	pub fn next(&mut self) -> Result<Event, EventError> {
 		loop {
@@ -47,9 +48,11 @@ impl EventHandler {
 				.unwrap_or(Duration::ZERO);
 			if cte::poll(timeout)? {
 				match cte::read()? {
-					cte::Event::Key(key) if key.kind == cte::KeyEventKind::Press => return Ok(Event::Key(key)),
-					cte::Event::Mouse(mouse) => return Ok(Event::Mouse(mouse)),
+					cte::Event::Key(key) if key.kind == cte::KeyEventKind::Press && self.focused => return Ok(Event::Key(key)),
+					cte::Event::Mouse(mouse) if self.focused => return Ok(Event::Mouse(mouse)),
 					cte::Event::Resize(w, h) => return Ok(Event::Resize(w, h)),
+					cte::Event::FocusGained => self.focused = true,
+					cte::Event::FocusLost => self.focused = false,
 					_ => {},
 				}
 			}

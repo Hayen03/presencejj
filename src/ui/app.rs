@@ -2,7 +2,7 @@ use std::{io::Write, sync::Arc};
 
 use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style, Stylize}, symbols::border, text::Line, widgets::{Block, Widget}};
 
-use crate::ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::{ErrorScreen, PageCompte, PageGroupe}, tui::Tui};
+use crate::{prelude::with_stderr_silenced, ui::{AppState, PollRequest, Screen, Theme, UIError, UpdateAction, actions::UpdateActions, event::Event, screens::{ErrorScreen, PageCompte, PageGroupe}, tui::Tui}};
 use crate::ui::actions;
 use crate::ui::screens::{Menu, MenuItem};
 
@@ -112,9 +112,10 @@ impl App {
 					PollRequest::Line(poll) => Box::new(poll.to_line_input_screen()) as Box<dyn Screen>,
 					PollRequest::Menu(poll) => Box::new(poll.into_screen()) as Box<dyn Screen>,
 					PollRequest::File(poll) => {
-						let res = term.suspend_raw_mode(|| {
-							poll.get_file();
-						});
+						//let res = term.suspend_raw_mode(|| {
+						//	with_stderr_silenced(|| poll.get_file())
+						//});
+						let res = with_stderr_silenced(|| poll.get_file());
 						if let Err(err) = res {
 							Box::new(ErrorScreen::from_error(Box::new(err)))
 						} else {
