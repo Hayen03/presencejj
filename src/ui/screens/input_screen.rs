@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span, Text}, widgets::{Block, Clear, Paragraph, Widget, WidgetRef, Wrap}};
 use ratatui_textarea::{CursorMove, Input, Key, TextArea};
 
-use crate::{data::{BoolJustifie, adresse::{Adresse, CodePostal, Pays, Province, Ville}}, ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, line_width, screens::ENTER_ESC_INSTRUCTIONS, str_width}};
+use crate::{cdj::membres::Contact, data::{BoolJustifie, adresse::{Adresse, CodePostal, Pays, Province, Ville}, cam::{CAM, NAM}, tel::Tel}, ui::{AppState, Screen, ScreenSize, UIError, UpdateAction, actions::UpdateActions, line_width, screens::ENTER_ESC_INSTRUCTIONS, str_width}};
 
 pub type TextInputValidation = Arc<dyn (Fn(&str) -> bool) + Send + Sync>;
 pub type InputAfterResult = Result<UpdateActions, UIError>;
@@ -588,7 +588,7 @@ impl WidgetRef for AdresseInputScreen {
 			if *field == self.sel { // render the text area for the selected field
 				let mut lock = self.textarea.write().expect("Poisoned Lock");
 				let val = lock.lines().join("\n");
-				let style = style_field(*field, val.trim());
+				let style = Self::style_field(*field, val.trim());
 				lock.set_style(style);
 				lock.render(field_area, buf);
 			} else {
@@ -601,7 +601,7 @@ impl WidgetRef for AdresseInputScreen {
 					AdresseField::Pays => &self.pays,
 					AdresseField::Province => &self.province,
 				};
-				let style = style_field(*field, val.trim());
+				let style = Self::style_field(*field, val.trim());
 				let par = Paragraph::new(Text::from(val.as_str()).style(style));
 				par.render(field_area, buf);
 			}
@@ -609,7 +609,6 @@ impl WidgetRef for AdresseInputScreen {
 
 	}
 }
-
 impl AdresseInputScreen {
 	const PREFERED_FIELD_WIDTH: u16 = 12;
 	pub fn with_title(mut self, title: String) -> Self {
@@ -745,6 +744,33 @@ impl AdresseInputScreen {
 		self.sel = self.sel.prev();
 		self.update_textarea();
 	}
+
+	fn style_field(field: AdresseField, value: &str) -> Style {
+		match field {
+			AdresseField::Numero => {
+				if value.parse::<i32>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+			AdresseField::Appartement => {
+				if value.parse::<i32>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+			AdresseField::CodePostal => {
+				if value.parse::<CodePostal>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+			_ => Style::new().gray(),
+		}
+	}
 }
 impl Screen for AdresseInputScreen {
 	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
@@ -786,29 +812,557 @@ impl Screen for AdresseInputScreen {
 	}
 }
 
-fn style_field(field: AdresseField, value: &str) -> Style {
-	match field {
-		AdresseField::Numero => {
-			if value.parse::<i32>().is_ok() {
-				Style::new().green()
+
+pub type ContactInputAfter = dyn Fn(Option<Contact>, Arc<AppState>) -> InputAfterResult + Send + Sync;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContactField {
+	Nom,
+	Tel,
+	Lien,
+}
+impl ContactField {
+	const VALUES: [ContactField; 3] = [
+		ContactField::Nom,
+		ContactField::Tel,
+		ContactField::Lien,
+	];
+	fn label(&self) -> &'static str {
+		match self {
+			Self::Nom => "Nom",
+			Self::Tel => "Téléphone",
+			Self::Lien => "Lien",
+		}
+	}
+	fn next(&self) -> Self {
+		match self {
+			Self::Nom => Self::Tel,
+			Self::Tel => Self::Lien,
+			Self::Lien => Self::Nom,
+		}
+	}
+	fn prev(&self) -> Self {
+		match self {
+			Self::Nom => Self::Lien,
+			Self::Tel => Self::Nom,
+			Self::Lien => Self::Tel,
+		}
+	}
+}
+pub struct ContactInputScreen {
+	nom: String,
+	tel: String,
+	lien: String,
+	textarea: RwLock<TextArea<'static>>,
+	sel: ContactField,
+	after: Option<Box<ContactInputAfter>>,
+	size: (ScreenSize, ScreenSize),
+	title: Line<'static>,
+	title_width: u16,
+}
+impl Debug for ContactInputScreen {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ContactInputScreen")
+			.field("nom", &self.nom)
+			.field("tel", &self.tel)
+			.field("lien", &self.lien)
+			.field("sel", &self.sel)
+			.field("after", &self.after.is_some())
+			.field("size", &self.size)
+			.field("title", &self.title)
+			.field("title_width", &self.title_width)
+			.finish()
+	}
+}
+impl Default for ContactInputScreen {
+	fn default() -> Self {
+		let mut textarea = TextArea::default();
+		textarea.set_cursor_style(Style::new().white().on_black().reversed().slow_blink());
+		Self {
+			nom: String::new(),
+			tel: String::new(),
+			lien: String::new(),
+			textarea: RwLock::new(textarea),
+			sel: ContactField::Nom,
+			after: None,
+			size: (ScreenSize::Fit { min: 24, max: u16::MAX }, ScreenSize::Length(2 + ContactField::VALUES.len() as u16)),
+			title: Line::default(),
+			title_width: 0,
+		}
+	}
+}
+impl WidgetRef for ContactInputScreen {
+	fn render_ref(&self,area: Rect,buf: &mut Buffer) {
+		let label_par = Paragraph::new(Text::from(ContactField::VALUES.iter().map(|f| {
+			Line::from(format!("{}: ", f.label())).white().bold()
+		}).collect::<Vec<_>>()));
+		let label_width = label_par.line_width() as u16;
+
+		let prefered_width = (Self::PREFERED_FIELD_WIDTH + label_width + 3).max(self.title_width).max(*INPUT_BLOCK_INSTRUCTION_WIDTH); // 3 for border and gutter
+		let width = self.size.0.resolve(area.width, prefered_width); // 2 for border and 1 for gutter
+		let height = self.size.1.resolve(area.height, 2 + ContactField::VALUES.len() as u16); // 2 for border
+		let area = area.centered(Constraint::Length(width), Constraint::Length(height));
+		
+
+		let block = ADDRESS_INPUT_BLOCK.clone().title_top(self.title.clone());
+		let inner = block.inner(area);
+		let label_area = Rect {
+			x: inner.x,
+			y: inner.y,
+			width: label_width,
+			height: inner.height,
+		};
+		let field_width = area.width.saturating_sub(label_width).saturating_sub(1);
+
+		Clear.render(area, buf);
+		block.render(area, buf);
+		label_par.render(label_area, buf);
+
+		// render the fields
+		for (i, field) in ContactField::VALUES.iter().enumerate() {
+			let field_area = Rect {
+				x: inner.x + label_width + 1,
+				y: inner.y + i as u16,
+				width: field_width,
+				height: 1,
+			};
+			if *field == self.sel { // render the text area for the selected field
+				let mut lock = self.textarea.write().expect("Poisoned Lock");
+				let val = lock.lines().join("\n");
+				let style = Self::style_field(*field, val.trim());
+				lock.set_style(style);
+				lock.render(field_area, buf);
 			} else {
-				Style::new().red()
+				let val = match field {
+					ContactField::Nom => &self.nom,
+					ContactField::Tel => &self.tel,
+					ContactField::Lien => &self.lien,
+				};
+				let style = Self::style_field(*field, val.trim());
+				let par = Paragraph::new(Text::from(val.as_str()).style(style));
+				par.render(field_area, buf);
 			}
-		},
-		AdresseField::Appartement => {
-			if value.parse::<i32>().is_ok() {
-				Style::new().green()
+		}
+
+	}
+}
+impl ContactInputScreen {
+	const PREFERED_FIELD_WIDTH: u16 = 12;
+	pub fn with_title(mut self, title: String) -> Self {
+		let title = Line::from(format!(" {} ", title)).centered().white().bold();
+		let title_width = (line_width(&title) as u16).saturating_add(2);
+		self.title = title;
+		self.title_width = title_width;
+		self
+	}
+	pub fn with_after(mut self, after: Box<ContactInputAfter>) -> Self {
+		self.after = Some(after);
+		self
+	}
+	pub fn with_value(mut self, contact: Contact) -> Self {
+		self.nom = contact.nom.clone();
+		self.tel = contact.tel.map(|t| t.to_string()).unwrap_or_default();
+		self.lien = contact.lien.unwrap_or_default();
+		self.update_textarea();
+		self
+	}
+	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
+		self.size = (width, height);
+		self
+	}
+
+	pub fn get_value(&self) -> Option<Contact> {
+		let nom = if self.sel == ContactField::Nom {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.nom.clone()
+		};
+		let tel = if self.sel == ContactField::Tel {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.tel.clone()
+		};
+		let lien = if self.sel == ContactField::Lien {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.lien.clone()
+		};
+		let nom = if nom.trim().is_empty() { None } else { Some(nom.trim().to_string()) };
+		let tel = if tel.trim().is_empty() { None } else {
+			match tel.trim().parse::<Tel>() {
+				Ok(t) => Some(t),
+				Err(_) => return None, // invalid input
+			}
+		};
+		let lien = if lien.trim().is_empty() { None } else { Some(lien.trim().to_string()) };
+		nom.map(|nom| Contact {
+			nom,
+			tel,
+			lien,
+		})
+	}
+
+	fn update_textarea(&self) {
+		let val = match self.sel {
+			ContactField::Nom => &self.nom,
+			ContactField::Tel => &self.tel,
+			ContactField::Lien => &self.lien,
+		};
+		let mut lock = self.textarea.write().expect("Poisoned Lock");
+		lock.clear();
+		lock.insert_str(val);
+		lock.move_cursor(CursorMove::End);
+	}
+	fn record_textarea(&mut self) {
+		let val = self.textarea.read().expect("Poisoned Lock").lines().join("\n");
+		match self.sel {
+			ContactField::Nom => self.nom = val,
+			ContactField::Tel => self.tel = val,
+			ContactField::Lien => self.lien = val,
+		}
+	}
+	fn next_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.next();
+		self.update_textarea();
+	}
+	fn prev_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.prev();
+		self.update_textarea();
+	}
+
+	fn style_field(field: ContactField, value: &str) -> Style {
+		match field {
+			ContactField::Tel => {
+				if value.trim().parse::<Tel>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+			_ => Style::new().gray(),
+		}
+	}
+}
+impl Screen for ContactInputScreen {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
+		match event {
+			crate::ui::event::Event::Key(key) => {
+				use crossterm::event as cte;
+				match key.code {
+					cte::KeyCode::Enter => {
+						self.record_textarea();
+						if let Some(after) = self.after.as_deref() {
+							after(self.get_value(), state.clone())
+						} else {
+							Ok(UpdateAction::Pop.one())
+						}
+					},
+					cte::KeyCode::Esc => {
+						Ok(UpdateAction::Pop.one())
+					},
+					cte::KeyCode::Tab => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Up => {
+						self.prev_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Down => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					input => {
+						self.textarea.write().expect("Poisoned Lock").input(Input::from(key));
+						Ok(UpdateAction::Redraw.one())
+					},
+				}
+			},
+			_ => Ok(UpdateAction::Continue.one()),
+		}
+	}
+}
+
+
+pub type CAMInputAfter = dyn Fn(Option<CAM>, Arc<AppState>) -> InputAfterResult + Send + Sync;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CAMField {
+	Nam,
+	ExpY,
+	ExpM,
+}
+impl CAMField {
+	const VALUES: [CAMField; 3] = [
+		CAMField::Nam,
+		CAMField::ExpY,
+		CAMField::ExpM,
+	];
+	fn label(&self) -> &'static str {
+		match self {
+			Self::Nam => "Nom",
+			Self::ExpY => "Année d'expiration",
+			Self::ExpM => "Mois d'expiration",
+		}
+	}
+	fn next(&self) -> Self {
+		match self {
+			Self::Nam => Self::ExpY,
+			Self::ExpY => Self::ExpM,
+			Self::ExpM => Self::Nam,
+		}
+	}
+	fn prev(&self) -> Self {
+		match self {
+			Self::Nam => Self::ExpM,
+			Self::ExpY => Self::Nam,
+			Self::ExpM => Self::ExpY,
+		}
+	}
+}
+pub struct CAMInputScreen {
+	nam: String,
+	exp_y: String,
+	exp_m: String,
+	textarea: RwLock<TextArea<'static>>,
+	sel: CAMField,
+	after: Option<Box<CAMInputAfter>>,
+	size: (ScreenSize, ScreenSize),
+	title: Line<'static>,
+	title_width: u16,
+}
+impl Debug for CAMInputScreen {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("CAMInputScreen")
+			.field("nam", &self.nam)
+			.field("exp_y", &self.exp_y)
+			.field("exp_m", &self.exp_m)
+			.field("sel", &self.sel)
+			.field("after", &self.after.is_some())
+			.field("size", &self.size)
+			.field("title", &self.title)
+			.field("title_width", &self.title_width)
+			.finish()
+	}
+}
+impl Default for CAMInputScreen {
+	fn default() -> Self {
+		let mut textarea = TextArea::default();
+		textarea.set_cursor_style(Style::new().white().on_black().reversed().slow_blink());
+		Self {
+			nam: String::new(),
+			exp_y: String::new(),
+			exp_m: String::new(),
+			textarea: RwLock::new(textarea),
+			sel: CAMField::Nam,
+			after: None,
+			size: (ScreenSize::Fit { min: 24, max: u16::MAX }, ScreenSize::Length(2 + CAMField::VALUES.len() as u16)),
+			title: Line::default(),
+			title_width: 0,
+		}
+	}
+}
+impl WidgetRef for CAMInputScreen {
+	fn render_ref(&self,area: Rect,buf: &mut Buffer) {
+		let label_par = Paragraph::new(Text::from(CAMField::VALUES.iter().map(|f| {
+			Line::from(format!("{}: ", f.label())).white().bold()
+		}).collect::<Vec<_>>()));
+		let label_width = label_par.line_width() as u16;
+
+		let prefered_width = (Self::PREFERED_FIELD_WIDTH + label_width + 3).max(self.title_width).max(*INPUT_BLOCK_INSTRUCTION_WIDTH); // 3 for border and gutter
+		let width = self.size.0.resolve(area.width, prefered_width); // 2 for border and 1 for gutter
+		let height = self.size.1.resolve(area.height, 2 + CAMField::VALUES.len() as u16); // 2 for border
+		let area = area.centered(Constraint::Length(width), Constraint::Length(height));
+		
+
+		let block = ADDRESS_INPUT_BLOCK.clone().title_top(self.title.clone());
+		let inner = block.inner(area);
+		let label_area = Rect {
+			x: inner.x,
+			y: inner.y,
+			width: label_width,
+			height: inner.height,
+		};
+		let field_width = area.width.saturating_sub(label_width).saturating_sub(1);
+
+		Clear.render(area, buf);
+		block.render(area, buf);
+		label_par.render(label_area, buf);
+
+		// render the fields
+		for (i, field) in CAMField::VALUES.iter().enumerate() {
+			let field_area = Rect {
+				x: inner.x + label_width + 1,
+				y: inner.y + i as u16,
+				width: field_width,
+				height: 1,
+			};
+			if *field == self.sel { // render the text area for the selected field
+				let mut lock = self.textarea.write().expect("Poisoned Lock");
+				let val = lock.lines().join("\n");
+				let style = Self::style_field(*field, val.trim());
+				lock.set_style(style);
+				lock.render(field_area, buf);
 			} else {
-				Style::new().red()
+				let val = match field {
+					CAMField::Nam => &self.nam,
+					CAMField::ExpY => &self.exp_y,
+					CAMField::ExpM => &self.exp_m,
+				};
+				let style = Self::style_field(*field, val.trim());
+				let par = Paragraph::new(Text::from(val.as_str()).style(style));
+				par.render(field_area, buf);
 			}
-		},
-		AdresseField::CodePostal => {
-			if value.parse::<CodePostal>().is_ok() {
-				Style::new().green()
-			} else {
-				Style::new().red()
-			}
-		},
-		_ => Style::new().gray(),
+		}
+
+	}
+}
+impl CAMInputScreen {
+	const PREFERED_FIELD_WIDTH: u16 = 12;
+	pub fn with_title(mut self, title: String) -> Self {
+		let title = Line::from(format!(" {} ", title)).centered().white().bold();
+		let title_width = (line_width(&title) as u16).saturating_add(2);
+		self.title = title;
+		self.title_width = title_width;
+		self
+	}
+	pub fn with_after(mut self, after: Box<CAMInputAfter>) -> Self {
+		self.after = Some(after);
+		self
+	}
+	pub fn with_value(mut self, cam: CAM) -> Self {
+		self.nam = cam.num.to_string();
+		self.exp_y = cam.exp.0.to_string();
+		self.exp_m = cam.exp.1.to_string();
+		self.update_textarea();
+		self
+	}
+	pub fn with_size(mut self, width: ScreenSize, height: ScreenSize) -> Self {
+		self.size = (width, height);
+		self
+	}
+
+	pub fn get_value(&self) -> Option<CAM> {
+		let nam = if self.sel == CAMField::Nam {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.nam.clone()
+		};
+		let exp_y = if self.sel == CAMField::ExpY {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.exp_y.clone()
+		};
+		let exp_m = if self.sel == CAMField::ExpM {
+			self.textarea.read().expect("Poisoned Lock").lines().join("\n")
+		} else {
+			self.exp_m.clone()
+		};
+		let nam = nam.trim().parse::<NAM>().ok()?;
+		let exp_y = exp_y.trim().parse::<i32>().ok()?;
+		let exp_m = exp_m.trim().parse::<u8>().ok()?;
+		Some(CAM {
+			num: nam,
+			exp: (exp_y, exp_m),
+		})
+	}
+
+	fn update_textarea(&self) {
+		let val = match self.sel {
+			CAMField::Nam => &self.nam,
+			CAMField::ExpY => &self.exp_y,
+			CAMField::ExpM => &self.exp_m,
+		};
+		let mut lock = self.textarea.write().expect("Poisoned Lock");
+		lock.clear();
+		lock.insert_str(val);
+		lock.move_cursor(CursorMove::End);
+	}
+	fn record_textarea(&mut self) {
+		let val = self.textarea.read().expect("Poisoned Lock").lines().join("\n");
+		match self.sel {
+			CAMField::Nam => self.nam = val,
+			CAMField::ExpY => self.exp_y = val,
+			CAMField::ExpM => self.exp_m = val,
+		}
+	}
+	fn next_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.next();
+		self.update_textarea();
+	}
+	fn prev_field(&mut self) {
+		self.record_textarea();
+		self.sel = self.sel.prev();
+		self.update_textarea();
+	}
+
+	fn style_field(field: CAMField, value: &str) -> Style {
+		match field {
+			CAMField::Nam => {
+				if value.trim().parse::<NAM>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+			CAMField::ExpM => {
+				if let Ok(exp_m) = value.trim().parse::<u8>() {
+					if (1..=12).contains(&exp_m) {
+						Style::new().green()
+					} else {
+						Style::new().red()
+					}
+				} else {
+					Style::new().red()
+				}
+			},
+			CAMField::ExpY => {
+				if value.trim().parse::<i32>().is_ok() {
+					Style::new().green()
+				} else {
+					Style::new().red()
+				}
+			},
+		}
+	}
+}
+impl Screen for CAMInputScreen {
+	fn handle_event(&mut self, event: crate::ui::event::Event, state: Arc<AppState>) -> Result<UpdateActions, UIError> {
+		match event {
+			crate::ui::event::Event::Key(key) => {
+				use crossterm::event as cte;
+				match key.code {
+					cte::KeyCode::Enter => {
+						self.record_textarea();
+						if let Some(after) = self.after.as_deref() {
+							after(self.get_value(), state.clone())
+						} else {
+							Ok(UpdateAction::Pop.one())
+						}
+					},
+					cte::KeyCode::Esc => {
+						Ok(UpdateAction::Pop.one())
+					},
+					cte::KeyCode::Tab => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Up => {
+						self.prev_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					cte::KeyCode::Down => {
+						self.next_field();
+						Ok(UpdateAction::Redraw.one())
+					},
+					input => {
+						self.textarea.write().expect("Poisoned Lock").input(Input::from(key));
+						Ok(UpdateAction::Redraw.one())
+					},
+				}
+			},
+			_ => Ok(UpdateAction::Continue.one()),
+		}
 	}
 }

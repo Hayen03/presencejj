@@ -816,7 +816,27 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 			}
 			UpdateAction::PushSub(Box::new(input_screen)).one()
 		},
-		FieldType::Cam(cam) => UpdateAction::Continue.one(),
+		FieldType::Cam(cam) => {
+			let mut input_screen = CAMInputScreen::default()
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						lock.set_value(FieldType::from(input));
+						if let Some(dirty_flag) = &dirty_flag {
+							*dirty_flag.lock().expect("Poisoned Lock") = true;
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(cam) = cam {
+				input_screen = input_screen.with_value(*cam);
+			}
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			}
+
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
 		FieldType::Date(d) => {
 			let mut input_screen = LineInputScreen::default()
 				.with_value(d.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default())
@@ -890,7 +910,24 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 			UpdateAction::PushSub(Box::new(input_screen)).one()
 		},
 		FieldType::Contact(c) => {
-			UpdateAction::Continue.one()
+			let mut input_screen = ContactInputScreen::default()
+				.with_after(Box::new(move |input, state| {
+					if let Some(input) = input {
+						let mut lock = field_hook.write().expect("Poisoned Lock");
+						lock.set_value(FieldType::from(input));
+						if let Some(dirty_flag) = &dirty_flag {
+							*dirty_flag.lock().expect("Poisoned Lock") = true;
+						}
+					}
+					Ok(UpdateAction::Pop.one())
+			}));
+			if let Some(c) = c {
+				input_screen = input_screen.with_value(c.clone());
+			}			
+			if let Some(title) = title {
+				input_screen = input_screen.with_title(title);
+			};
+			UpdateAction::PushSub(Box::new(input_screen)).one()
 		},
 	}
 }
