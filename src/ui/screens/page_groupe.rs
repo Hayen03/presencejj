@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::HashMap, sync::{Arc, RwLock}};
+use std::{cell::Cell, collections::HashMap, sync::{Arc, Mutex, RwLock}};
 
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Style, Stylize}, text::{Line, Span}, widgets::{Paragraph, Row, StatefulWidget, Table, TableState, Widget, WidgetRef, Wrap}};
@@ -27,9 +27,10 @@ struct GeneralView {
 	ordre: Vec<Arc<RwLock<Field>>>,
 	sel: Option<usize>,
 	scroll: Cell<u16>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl GeneralView {
-	fn new(groupe: &Groupe) -> Self {
+	fn new(groupe: &Groupe, dirty_flag: Arc<Mutex<bool>>) -> Self {
 		let mut block = FieldBlock::default();
 		let saison = block.add_field(Field::from(groupe.saison.as_deref()).with_label("Saison".into()));
 		let activite = block.add_field(Field::from(groupe.activite.as_deref()).with_label("Activité".into()));
@@ -57,6 +58,7 @@ impl GeneralView {
 			ordre,
 			sel: None,
 			scroll: Cell::new(0),
+			dirty_flag,
 		}
 	}
 	fn update(&self, groupe: &Groupe) {
@@ -109,7 +111,7 @@ impl Screen for GeneralView {
 					},
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
-							Ok(Field::on_action(self.ordre[sel].clone(), None))
+							Ok(Field::on_action(self.ordre[sel].clone(), Some(self.dirty_flag.clone())))
 						} else {
 							Ok(UpdateAction::Continue.one())
 						}
@@ -262,9 +264,10 @@ struct MembreView {
 	sel: SousGroupeSel,
 	table_state: RwLock<TableState>,
 	widths: [Constraint; 5],
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl MembreView {
-	fn new(gid: GroupeID, sg: Option<SousGroupeData>, membres: &[&Membre]) -> Self {
+	fn new(gid: GroupeID, sg: Option<SousGroupeData>, membres: &[&Membre], dirty_flag: Arc<Mutex<bool>>) -> Self {
 		let mut membres = membres.iter().map(|m| MembreLine::new(m)).collect::<Vec<_>>();
 		membres.sort();
 		Self {
@@ -274,6 +277,7 @@ impl MembreView {
 			sel: SousGroupeSel::None,
 			table_state: RwLock::new(TableState::default()),
 			widths: [Constraint::Percentage(20); 5],
+			dirty_flag,
 		}
 	}
 	fn next(&mut self) {
@@ -391,7 +395,7 @@ impl Screen for MembreView {
 						match self.sel {
 							SousGroupeSel::Fields(idx) => { // call the action of the field
 								if let Some(sg) = &self.sg {
-									Ok(Field::on_action(sg.ordre[idx].clone(), None))
+									Ok(Field::on_action(sg.ordre[idx].clone(), Some(self.dirty_flag.clone())))
 								} else {
 									Ok(UpdateAction::Continue.one())
 								}
@@ -472,11 +476,13 @@ pub struct PageGroupe {
 	gid: GroupeID,
 	title: Line<'static>,
 	tabs: Vec<PageGroupeView>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl PageGroupe {
 	pub fn try_new(groupe: &Groupe, membres: &MembreReg, requested_sg: Option<u32>) -> Result<Self, UIError> {
-		let general_view = GeneralView::new(groupe);
-		let membres_views = mk_sg(groupe, membres)?;
+		let dirty_flag = Arc::new(Mutex::new(false));
+		let general_view = GeneralView::new(groupe, dirty_flag.clone());
+		let membres_views = mk_sg(groupe, membres, dirty_flag.clone())?;
 		let title = Line::from(format!(" {} ", groupe.short_desc())).white().bold();
 		let tabs = mk_tabs(&membres_views);
 		let view = if let Some(req) = requested_sg {
@@ -489,12 +495,13 @@ impl PageGroupe {
 			gid: groupe.id,
 			title,
 			tabs,
+			dirty_flag,
 		})
 	}
 	pub fn update(&mut self, groupe: &Groupe, membres: &MembreReg) -> Result<(), UIError> {
 		let old_tab = self.tabs.get(self.view).copied().expect("Invalid view index");
 		self.general_view.update(groupe);
-		self.membre_views = mk_sg(groupe, membres)?;
+		self.membre_views = mk_sg(groupe, membres, self.dirty_flag.clone())?;
 		self.title = Line::from(format!(" {} ", groupe.short_desc())).white().bold();
 		self.gid = groupe.id;
 		self.tabs = mk_tabs(&self.membre_views);
@@ -593,14 +600,22 @@ impl Screen for PageGroupe {
 		}
 	}
 	fn on_refocus(&mut self, state: Arc<AppState>) {
-		let groupes = state.groupes.read().expect("Poisoned Lock");
-		let membres = state.membres.read().expect("Poisoned Lock");
-		let groupe = groupes.get(self.gid).expect("Groupe not found");
-		let _ = self.update(groupe, &membres);
+		if *self.dirty_flag.lock().expect("Poisoned Lock") {
+			let groupe = self.build_group();
+			self.title = Line::from(format!(" {} ", groupe.short_desc())).white().bold();
+			let mut groupes = state.groupes.write().expect("Poisoned Lock");
+			*groupes.get_mut(self.gid).expect("Groupe not found") = groupe;
+			*self.dirty_flag.lock().expect("Poisoned Lock") = false;
+		} else {
+			let groupes = state.groupes.read().expect("Poisoned Lock");
+			let membres = state.membres.read().expect("Poisoned Lock");
+			let groupe = groupes.get(self.gid).expect("Groupe not found");
+			let _ = self.update(groupe, &membres);
+		}
 	}
 }
 
-fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, MembreView>, UIError> {
+fn mk_sg(groupe: &Groupe, membres: &MembreReg, dirty_flag: Arc<Mutex<bool>>) -> Result<HashMap<Option<u32>, MembreView>, UIError> {
 	let mut membre_views = HashMap::new();
 	let mut _membres = groupe.participants.clone();
 	for sg in groupe.sous_groupe.iter() {
@@ -615,7 +630,7 @@ fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, Me
 			}
 		}
 		let sg_data = SousGroupeData::new(id, profil, animateur);
-		let mut view = MembreView::new(groupe.id, Some(sg_data), &mbrs);
+		let mut view = MembreView::new(groupe.id, Some(sg_data), &mbrs, dirty_flag.clone());
 		view.fit_widths();
 		membre_views.insert(Some(id), view);
 	}
@@ -625,7 +640,7 @@ fn mk_sg(groupe: &Groupe, membres: &MembreReg) -> Result<HashMap<Option<u32>, Me
 			let m = membres.get(*mid)?;
 			mbrs.push(m);
 		}
-		let mut view = MembreView::new(groupe.id, None, &mbrs);
+		let mut view = MembreView::new(groupe.id, None, &mbrs, dirty_flag);
 		view.fit_widths();
 		membre_views.insert(None, view);
 	}

@@ -783,7 +783,22 @@ fn mk_action(this: Arc<RwLock<Field>>, dirty_flag: Option<Arc<Mutex<bool>>>) -> 
 			};
 			UpdateAction::PushSub(Box::new(input_screen)).one()
 		},
-		FieldType::BoolJustify(bj) => UpdateAction::Continue.one(),
+		FieldType::BoolJustify(bj) => {
+			let mut input_screen = BoolJustifieInputScreen::default()
+				.with_title(title.unwrap_or_default())
+				.with_after(Box::new(move |input, state| {
+					let mut lock = field_hook.write().expect("Poisoned Lock");
+					lock.set_value(FieldType::from(input));
+					if let Some(dirty_flag) = &dirty_flag {
+						*dirty_flag.lock().expect("Poisoned Lock") = true;
+					}
+					Ok(UpdateAction::Pop.one())
+				}));
+			if let Some(bj) = bj {
+				input_screen = input_screen.with_reponse(Some(bj.reponse)).with_justification(bj.justification.clone());
+			}
+			UpdateAction::PushSub(Box::new(input_screen)).one()
+		},
 		FieldType::Cam(cam) => UpdateAction::Continue.one(),
 		FieldType::Date(d) => {
 			let mut input_screen = LineInputScreen::default()

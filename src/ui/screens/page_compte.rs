@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::HashSet, sync::{Arc, RwLock}};
+use std::{cell::Cell, collections::HashSet, sync::{Arc, Mutex, RwLock}};
 
 use lazy_static::lazy_static;
 use ratatui::{
@@ -59,9 +59,10 @@ struct ViewGeneral {
 	cluster: FieldBlockCluster,
 	sel: Option<usize>,
 	scroll: Cell<u16>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl ViewGeneral {
-	fn new(compte: &Compte) -> Self {
+	fn new(compte: &Compte, dirty_flag: Arc<Mutex<bool>>) -> Self {
 		let mut block = FieldBlock::default();
 		let tel = block.add_field(Field::from(compte.tel).with_label("Telephone".into()));
 		let email = block.add_field(Field::from(compte.email.clone()).with_label("Email".into()));
@@ -75,6 +76,7 @@ impl ViewGeneral {
 			cluster: FieldBlockCluster::new(vec![block]),
 			sel: None,
 			scroll: Cell::new(0),
+			dirty_flag,
 		}
 	}
 	fn update(&mut self, compte: &Compte) {
@@ -121,7 +123,7 @@ impl Screen for ViewGeneral {
 					},
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
-							Ok(Field::on_action(self.ordre[sel].clone(), None))
+							Ok(Field::on_action(self.ordre[sel].clone(), Some(self.dirty_flag.clone())))
 						} else {
 							Ok(UpdateAction::Continue.one())
 						}
@@ -274,15 +276,18 @@ pub struct PageCompte {
 	view_general: ViewGeneral,
 	view_membres: ViewMembres,
 	title: Line<'static>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl PageCompte {
 	pub fn try_new(compte: &Compte, membres: &MembreReg) -> Result<Self, UIError> {
+		let dirty_flag = Arc::new(Mutex::new(false));
 		Ok(Self {
 			cid: compte.id,
 			sel_view: PageCompteView::General,
-			view_general: ViewGeneral::new(compte),
+			view_general: ViewGeneral::new(compte, dirty_flag.clone()),
 			view_membres: ViewMembres::new(compte, membres),
 			title: Line::from(format!(" {} ", compte.mandataire)).white().bold(),
+			dirty_flag,
 		})
 	}
 	fn build_compte(&self, compte: &mut Compte) {
@@ -364,11 +369,19 @@ impl Screen for PageCompte {
 	}
 
 	fn on_refocus(&mut self, state: Arc<AppState>) {
-		let comptes = state.comptes.read().expect("Poisoned Lock");
-		let membres = state.membres.read().expect("Poisoned Lock");
-		let compte = comptes.get(self.cid).expect("Compte Inexistant");
-		self.title = Line::from(format!(" {} ", compte.mandataire)).white().bold();
-		self.view_general.update(compte);
-		self.view_membres.update(compte, &membres);
+		if *self.dirty_flag.lock().expect("Poisoned Lock") {
+			let mut comptes = state.comptes.write().expect("Poisoned Lock");
+			let compte = comptes.get_mut(self.cid).expect("Compte Inexistant");
+			self.build_compte(compte); // rebuild to commit the changes to the state
+			*self.dirty_flag.lock().expect("Poisoned Lock") = false;
+		} else {
+			let comptes = state.comptes.read().expect("Poisoned Lock");
+			let membres = state.membres.read().expect("Poisoned Lock");
+			let compte = comptes.get(self.cid).expect("Compte Inexistant");
+			self.title = Line::from(format!(" {} ", compte.mandataire)).white().bold();
+			self.view_general.update(compte);
+			self.view_membres.update(compte, &membres);
+		}
+		
 	}
 }

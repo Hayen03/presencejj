@@ -1,4 +1,4 @@
-use std::{cell::Cell, sync::{Arc, RwLock}};
+use std::{cell::Cell, sync::{Arc, Mutex, RwLock}};
 
 use lazy_static::lazy_static;
 use ratatui::{buffer::Buffer, layout::{Constraint, Rect}, style::{Color, Style, Stylize}, text::Line, widgets::{Clear, Paragraph, Row, StatefulWidget, Table, TableState, Widget, WidgetRef, Wrap}};
@@ -71,6 +71,7 @@ struct ViewGeneral {
 	sel: Option<usize>,
 	scroll: Cell<u16>,
 	//cid: Option<CompteID>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl WidgetRef for ViewGeneral {
 	fn render_ref(&self, area: Rect, buf: &mut Buffer) {
@@ -115,7 +116,7 @@ impl Screen for ViewGeneral {
 							}
 							*/
 
-							Ok(Field::on_action(field, None))
+							Ok(Field::on_action(field, Some(self.dirty_flag.clone())))
 						} else {
 							Ok(UpdateAction::Continue.one())
 						}
@@ -128,7 +129,7 @@ impl Screen for ViewGeneral {
 	}
 }
 impl ViewGeneral {
-	fn try_new(membre: &Membre, _compte: Option<&Compte>, _groupes: &[GroupeLine]) -> Result<Self, UIError> {
+	fn try_new(membre: &Membre, _compte: Option<&Compte>, _groupes: &[GroupeLine], dirty_flag: Arc<Mutex<bool>>) -> Result<Self, UIError> {
 		let cid = _compte.map(|c| c.id);
 
 		let mut block_intro = FieldBlock::default();
@@ -243,6 +244,7 @@ impl ViewGeneral {
 			cluster,
 			sel: None,
 			scroll: Cell::new(0),
+			dirty_flag,
 			//cid,
 		})
 	}
@@ -321,6 +323,7 @@ struct ViewFicheSante {
 	ordre: Vec<Arc<RwLock<Field>>>,
 	sel: Option<usize>,
 	scroll: Cell<u16>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl WidgetRef for ViewFicheSante {
 	fn render_ref(&self,area: ratatui::prelude::Rect,buf: &mut ratatui::prelude::Buffer) {
@@ -354,7 +357,7 @@ impl Screen for ViewFicheSante {
 					cte::KeyCode::Enter => {
 						if let Some(sel) = self.sel {
 							let field = self.ordre[sel].clone();
-							Ok(Field::on_action(field, None))
+							Ok(Field::on_action(field, Some(self.dirty_flag.clone())))
 						} else {
 							Ok(UpdateAction::Continue.one())
 						}
@@ -367,7 +370,7 @@ impl Screen for ViewFicheSante {
 	}
 }
 impl ViewFicheSante {
-	fn try_new(membre: &Membre, _compte: Option<&Compte>, _groupes: &[GroupeLine]) -> Result<Self, UIError> {
+	fn try_new(membre: &Membre, _compte: Option<&Compte>, _groupes: &[GroupeLine], dirty_flag: Arc<Mutex<bool>>) -> Result<Self, UIError> {
 		let mut general_block = FieldBlock::default();
 		let cam = general_block.add_field(Field::from(membre.fiche_sante.cam).with_label("Assurance Maladie".into()));
 		let auth_soins = general_block.add_field(Field::from(membre.fiche_sante.auth_soins).with_label("Soins autorisés".into()));
@@ -430,6 +433,7 @@ impl ViewFicheSante {
 			ordre,
 			sel: None,
 			scroll: Cell::new(0),
+			dirty_flag,
 		})
 	}
 	fn update(&mut self, membre: &Membre) {
@@ -605,9 +609,11 @@ pub struct PageMembre {
 	mid: MembreID,
 	cid: Option<CompteID>,
 	title: Line<'static>,
+	dirty_flag: Arc<Mutex<bool>>,
 }
 impl PageMembre {
 	pub fn try_new(membre: &Membre, comptes: &CompteReg, groupes: &GroupeReg) -> Result<Self, UIError> {
+		let dirty_flag = Arc::new(Mutex::new(false));
 		let compte = if let Some(cid) = membre.compte {
 			match comptes.get(cid) {
 				Ok(c) => Some(c.clone()),
@@ -622,13 +628,14 @@ impl PageMembre {
 		grps.sort_by(|a, b| a.key.cmp(&b.key));
 		let title = Line::from(format!(" {}, {} ", membre.nom, membre.prenom).white().bold());
 		let mut s = Self {
-			view_general: ViewGeneral::try_new(membre, compte.as_ref(), &grps)?,
-			view_fiche_sante: ViewFicheSante::try_new(membre, compte.as_ref(), &grps)?,
+			view_general: ViewGeneral::try_new(membre, compte.as_ref(), &grps, dirty_flag.clone())?,
+			view_fiche_sante: ViewFicheSante::try_new(membre, compte.as_ref(), &grps, dirty_flag.clone())?,
 			view_groupes: ViewGroupes::try_new(membre, compte.as_ref(), &grps)?,
 			mid: membre.id,
 			sel_view: PageMembreView::General,
 			title,
 			cid: compte.map(|c| c.id),
+			dirty_flag,
 		};
 		s.view_groupes.fit_widths();
 		Ok(s)
@@ -730,19 +737,29 @@ impl Screen for PageMembre {
 	}
 
 	fn on_refocus(&mut self, state: std::sync::Arc<crate::ui::AppState>) {
-		let membres = state.membres.read().expect("Poisoned Lock");
-		let comptes = state.comptes.read().expect("Poisoned Lock");
-		let groupes = state.groupes.read().expect("Poisoned Lock");
-		let membre = membres.get(self.mid).expect("Membre Inexistant");
-		let compte = self.cid.map(|cid| comptes.get(cid).expect("Compte Inexistant"));
-		let mut grps: Vec<GroupeLine> = groupes.groupes().filter_map(|g| {
-			g.get_key_for(membre.id).map(|key| GroupeLine { id: g.id, key })
-		}).collect();
-		grps.sort_by(|a, b| a.key.cmp(&b.key));
-		// update the tables with the latest data from the state
-		self.view_general.update(membre, compte);
-		self.view_fiche_sante.update(membre);
-		self.view_groupes.update(&grps);
+		if *self.dirty_flag.lock().expect("Poisoned Lock") { // if dirty flag is set, it means that the membre has been modified we should not update from the state and just reset the flag
+			let mut membres = state.membres.write().expect("Poisoned Lock");
+			let mut comptes = state.comptes.write().expect("Poisoned Lock");
+			let membre = membres.get_mut(self.mid).expect("Membre Inexistant");
+			let compte = self.cid.map(|cid| comptes.get_mut(cid).expect("Compte Inexistant"));
+			self.build_membre(membre, compte); // rebuild to commit the changes to the state
+			*self.dirty_flag.lock().expect("Poisoned Lock") = false;
+
+		} else {
+			let membres = state.membres.read().expect("Poisoned Lock");
+			let comptes = state.comptes.read().expect("Poisoned Lock");
+			let groupes = state.groupes.read().expect("Poisoned Lock");
+			let membre = membres.get(self.mid).expect("Membre Inexistant");
+			let compte = self.cid.map(|cid| comptes.get(cid).expect("Compte Inexistant"));
+			let mut grps: Vec<GroupeLine> = groupes.groupes().filter_map(|g| {
+				g.get_key_for(membre.id).map(|key| GroupeLine { id: g.id, key })
+			}).collect();
+			grps.sort_by(|a, b| a.key.cmp(&b.key));
+			// update the tables with the latest data from the state
+			self.view_general.update(membre, compte);
+			self.view_fiche_sante.update(membre);
+			self.view_groupes.update(&grps);
+		}
 	}
 
 }
