@@ -123,6 +123,10 @@ impl App {
 							continue;
 						}
 					},
+					PollRequest::Redraw => {
+						self.redraw_requested = true;
+						continue;
+					},
 				};
 				self.sub_screen_stack.push(screen);
 				self.redraw_requested = true;

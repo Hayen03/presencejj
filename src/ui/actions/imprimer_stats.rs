@@ -67,16 +67,19 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 				let new_step = Step::QueryCap { query };
 				*step.lock().expect("Poisoned Lock") = new_step;
 				*new_query_flag.lock().expect("Poisoned Lock") = true;
+				state.request_redraw();
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
 					lock = signal.wait(lock).expect("Poisoned Lock");
 				}
 				// retrieve and return the data
-				match lock.replace(Step::Work) {
+				let ret = match lock.replace(Step::Work) {
 					Step::QueryCap { query } => query.data,
 					_ => return Err(UIError::UnexpectedState { desc: format!("Expected Step::QueryCap, found {:?}", lock) }),
-				}
+				};
+				state.request_redraw();
+				ret
 			}
 		};
 		let get_missing_capacite = move |gid: GroupeID, _desc: &str| {
@@ -93,15 +96,18 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 				let new_step = Step::QueryAnnulation { query: Query::new(grps) };
 				*step.lock().expect("Poisoned Lock") = new_step;
 				*new_query_flag.lock().expect("Poisoned Lock") = true;
+				state.request_redraw();
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
 					lock = signal.wait(lock).expect("Poisoned Lock");
 				}
-				match lock.replace(Step::Work) {
+				let ret = match lock.replace(Step::Work) {
 					Step::QueryAnnulation { query } => query.data,
 					_ => return Err(UIError::UnexpectedState { desc: format!("Expected Step::QueryAnnulation, found {:?}", lock) }),
-				}
+				};
+				state.request_redraw();
+				ret
 			}
 		} else { HashMap::new() };
 		let get_annulations = move |gid: GroupeID, _desc: &str| {
@@ -118,15 +124,18 @@ pub fn imprimer_stats(state: Arc<AppState>) -> crate::ui::actions::ActionResult 
 				let new_step = Step::QueryAttente { query: Query::new(grps) };
 				*step.lock().expect("Poisoned Lock") = new_step;
 				*new_query_flag.lock().expect("Poisoned Lock") = true;
+				state.request_redraw();
 				// wait for completion
 				let mut lock = step.lock().expect("Poisoned Lock");
 				while !lock.is_completed() {
 					lock = signal.wait(lock).expect("Poisoned Lock");
 				}
-				match lock.replace(Step::Work) {
+				let ret = match lock.replace(Step::Work) {
 					Step::QueryAttente { query } => query.data,
 					_ => return Err(UIError::UnexpectedState { desc: format!("Expected Step::QueryAttente, found {:?}", lock) }),
-				}
+				};
+				state.request_redraw();
+				ret
 			}
 		} else { HashMap::new() };
 		let get_attente = move |gid: GroupeID, _desc: &str| {
@@ -518,7 +527,7 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut Text
 				Ok(UpdateAction::Redraw.one())
 			},
 		_ => {
-			Ok(UpdateAction::Redraw.one())
+			Ok(UpdateAction::Continue.one())
 		},
 	}
 }

@@ -351,6 +351,9 @@ impl AppState {
 			file
 		})
     }
+	pub fn request_redraw(&self) {
+		self.polls.write().expect("Poisoned Lock").push_back(PollRequest::Redraw);
+	}
 }
 
 #[derive(Clone, Default)]
@@ -663,4 +666,5 @@ pub enum PollRequest {
 	Line(PollLineRequest<'static>),
 	Menu(PollMenuRequest),
 	File(FilePollRequest),
+	Redraw,
 }
