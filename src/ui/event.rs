@@ -41,6 +41,7 @@ impl EventHandler {
 		let tick_rate = Duration::from_millis(tick_rate);
 		Self { tick_rate, last_tick: Instant::now(), focused: true }
 	}
+	#[allow(clippy::should_implement_trait)]
 	pub fn next(&mut self) -> Result<Event, EventError> {
 		loop {
 			let timeout = self.tick_rate
