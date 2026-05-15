@@ -117,6 +117,7 @@ impl App {
 						//});
 						let res = with_stderr_silenced(|| poll.get_file());
 						if let Err(err) = res {
+							self.redraw_requested = true;
 							Box::new(ErrorScreen::from_error(Box::new(err)))
 						} else {
 							continue;

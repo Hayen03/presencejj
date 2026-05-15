@@ -2,7 +2,7 @@ TARGET="${1:-aarch64-apple-darwin}"
 
 cargo build --release --target $TARGET
 cargo bundle --release --target $TARGET
-FOLDER="target/$TARGET/release/bundle/osx"
+FOLDER="target/release/bundle/osx"
 APP="$FOLDER/PresenceJJ.app"
 
 mv "$APP/Contents/MacOS/presencejj" "$APP/Contents/MacOS/presencejj-tui"

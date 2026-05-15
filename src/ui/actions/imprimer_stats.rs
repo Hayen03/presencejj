@@ -518,7 +518,7 @@ fn handle_query(query: &mut Query<usize>, signal: Arc<Condvar>, input: &mut Text
 				Ok(UpdateAction::Redraw.one())
 			},
 		_ => {
-			Ok(UpdateAction::Continue.one())
+			Ok(UpdateAction::Redraw.one())
 		},
 	}
 }
